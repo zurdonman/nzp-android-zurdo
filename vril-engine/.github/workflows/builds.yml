@@ -1,0 +1,803 @@
+name: Build
+on:
+  push:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+jobs:
+  Compile-Linux:
+    if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'pull_request' }}
+    name: Compile Linux (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86
+            deb_arch: i386
+            triplet: i686-linux-gnu
+            lib_triplet: i386-linux-gnu
+            compiler: gcc-i686-linux-gnu
+          - arch: x86_64
+            deb_arch: amd64
+            triplet: x86_64-linux-gnu
+            lib_triplet: x86_64-linux-gnu
+            compiler: gcc-x86-64-linux-gnu
+          - arch: arm64
+            deb_arch: arm64
+            triplet: aarch64-linux-gnu
+            lib_triplet: aarch64-linux-gnu
+            compiler: gcc-aarch64-linux-gnu
+          - arch: armhf
+            deb_arch: armhf
+            triplet: arm-linux-gnueabihf
+            lib_triplet: arm-linux-gnueabihf
+            compiler: gcc-arm-linux-gnueabihf
+    container:
+      image: debian:12
+    steps:
+      - name: Install cross toolchain
+        env:
+          DEB_ARCH: ${{ matrix.deb_arch }}
+          COMPILER: ${{ matrix.compiler }}
+        run: |
+          if [ "${DEB_ARCH}" != "amd64" ]; then
+            dpkg --add-architecture "${DEB_ARCH}"
+          fi
+          apt-get update
+          apt-get install -y make git pkg-config "${COMPILER}" \
+            "libsdl2-dev:${DEB_ARCH}" "libsdl2-mixer-dev:${DEB_ARCH}" \
+            "libgl-dev:${DEB_ARCH}" "libglu1-mesa-dev:${DEB_ARCH}"
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build
+        env:
+          ARCH: ${{ matrix.arch }}
+          TRIPLET: ${{ matrix.triplet }}
+          PKG_CONFIG_LIBDIR: /usr/lib/${{ matrix.lib_triplet }}/pkgconfig:/usr/share/pkgconfig
+        run: |
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          make -f Makefile.sdl WERROR=1 -j$(nproc) \
+            BUILD="build/sdl/${ARCH}" \
+            CROSS_COMPILE="${TRIPLET}-"
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}-nzp-sdl
+          path: ./build/sdl/${{ matrix.arch }}/nzportable
+  Compile-Windows:
+    if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'pull_request' }}
+    name: Compile Windows (${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86
+            triplet: i686-w64-mingw32
+          - arch: x86_64
+            triplet: x86_64-w64-mingw32
+    container:
+      image: debian:12
+    steps:
+      - name: Install cross toolchain
+        env:
+          COMPILER: ${{ matrix.compiler }}
+        run: |
+          apt-get update
+          apt-get install -y \
+            make \
+            git \
+            pkg-config \
+            mingw-w64-tools \
+            wget \
+            tar \
+            "${{ matrix.arch == 'x86' && 'gcc-mingw-w64-i686' || 'gcc-mingw-w64-x86-64' }}"
+      - name: Install Windows SDL dependencies
+        env:
+          TRIPLET: ${{ matrix.triplet }}
+          SDL2_VER: 2.32.10
+          SDL2_MIXER_VER: 2.8.2
+        run: |
+          mkdir -p /opt/mingw-deps
+          cd /tmp
+          # get the latest SDL2 version
+          wget -q https://github.com/libsdl-org/SDL/releases/download/release-${SDL2_VER}/SDL2-devel-${SDL2_VER}-mingw.tar.gz
+          tar xf SDL2-devel-${SDL2_VER}-mingw.tar.gz
+          cp -r SDL2-${SDL2_VER}/${TRIPLET}/* /opt/mingw-deps/
+          # get the latest SDL2_Mixer version
+          wget -q https://github.com/libsdl-org/SDL_mixer/releases/download/release-${SDL2_MIXER_VER}/SDL2_mixer-devel-${SDL2_MIXER_VER}-mingw.tar.gz
+          tar xf SDL2_mixer-devel-${SDL2_MIXER_VER}-mingw.tar.gz
+          cp -r SDL2_mixer-${SDL2_MIXER_VER}/${TRIPLET}/* /opt/mingw-deps/
+          # the upstream .pc files hardcode an absolute value build-server path..
+          # we have to rewrite it to our actual extraction location
+          sed -i "s|^prefix=.*|prefix=/opt/mingw-deps|" /opt/mingw-deps/lib/pkgconfig/*.pc
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build
+        env:
+          ARCH: ${{ matrix.arch }}
+          TRIPLET: ${{ matrix.triplet }}
+          PKG_CONFIG_PATH: /opt/mingw-deps/lib/pkgconfig
+          PKG_CONFIG_LIBDIR: /opt/mingw-deps/lib/pkgconfig
+        run: |
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          make -f Makefile.sdl WERROR=1 -j$(nproc) \
+            CROSS_COMPILE="${TRIPLET}-"
+            BUILD="build/sdl/${ARCH}" \
+            TARGET="build/sdl/${ARCH}/nzportable.exe"
+      - name: Add DLLs to distributables
+        run: |
+          mkdir -p dist
+          cp build/sdl/nzportable.exe dist/
+          cp /opt/mingw-deps/bin/*.dll dist/
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.arch }}-nzp-sdl
+          path: dist/
+  Compile-EBOOT:
+    if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    container:
+      image: pspdev/pspdev
+    steps:
+      - uses: actions/checkout@v2
+      - name: Get container ready
+        run: |
+          apk add bash zip git gmp mpc1 mpfr4 make
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+      - name: Build
+        working-directory: ./
+        run: |
+          psp-pacman -Sy libpspmath --noconfirm
+          make -f Makefile.psp WERROR=1
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: psp-nzp-eboot
+          path: ./build/psp/bin/EBOOT.PBP
+  Compile-3DSX:
+    if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    outputs:
+      o3ds_link: ${{ steps.zip.outputs.zip }}
+    container:
+      image: devkitpro/devkitarm
+    steps:
+      - uses: actions/checkout@v2
+      - name: Install Packages and update picaGL
+        run: |
+          apt-get update && apt-get install -y git
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+          git clone https://github.com/masterfeizz/picaGL.git
+          cd picaGL
+          git checkout revamp
+          mkdir clean
+          make install
+      - name: Build and install mpg123
+        run: |
+          curl -LO https://downloads.sourceforge.net/project/mpg123/mpg123/1.32.3/mpg123-1.32.3.tar.bz2
+          tar xf mpg123-1.32.3.tar.bz2
+          cd mpg123-1.32.3
+          ./configure --host=arm-none-eabi \
+            --prefix=$DEVKITPRO/portlibs/3ds \
+            --disable-shared \
+            --enable-static \
+            --with-cpu=generic_fpu \
+            CC=$DEVKITARM/bin/arm-none-eabi-gcc \
+            CFLAGS="-march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft -D_3DS"
+          make -k || true
+          make -k install || true
+          cp src/libmpg123/mpg123.h $DEVKITPRO/portlibs/3ds/include/
+      - name: Build
+        working-directory: ./
+        run: |
+          make -f Makefile.ctr WERROR=1
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctr-nzp-3dsx
+          path: ./build/ctr/bin/nzportable.3dsx
+  Compile-TNS:
+    if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    container:
+      image: bensuperpc/ndless:latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Build with Ndless SDK
+        working-directory: ./
+        run: |
+          make -f Makefile.nspire WERROR=1
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nspire-nzp-tns
+          path: ./build/nspire/bin/nzportable.tns
+  Compile-VPK:
+    if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    container:
+      image: vitasdk/vitasdk
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Packages
+        run: |
+          apt update && apt install -y git
+          git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+      - name: Setup latest vitaGL
+        run: |
+          git clone https://github.com/Rinnegatamante/vitaGL.git
+          cd vitaGL
+          git checkout 6e7fe40
+          make MATH_SPEEDHACK=1 PRIMITIVES_SPEEDHACK=1 HAVE_FFP_SHADER_SUPPORT=1 DISABLE_FFP_MULTITEXTURE=1 HAVE_WVP_ON_GPU=1 NO_TILE_CLIPPER=1 NO_SPLASHSCREEN=1 -j$(nproc)
+          make install
+      - name: Build
+        working-directory: ./
+        run: |
+          make -f Makefile.psp2 WERROR=1 -j$(nproc)
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: psp2-nzp-vpk
+          path: ./build/psp2/nzportable.vpk
+  Compile-NRO:
+      if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'pull_request' }}
+      runs-on: ubuntu-latest
+      container:
+        image: devkitpro/devkita64
+      steps:
+        - name: Checkout
+          uses: actions/checkout@v4
+        - name: Install dependencies
+          run: |
+            apt-get update && apt-get install -y git
+            dkp-pacman -S --needed --noconfirm switch-sdl2_mixer
+            git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+        - name: Build
+          working-directory: ./
+          run: |
+            make -f Makefile.nx WERROR=1 -j$(nproc)
+        - name: Upload Artifact
+          uses: actions/upload-artifact@v4
+          with:
+            name: nx-nzp-nro
+            path: |
+              ./build/nx/bin/nzportable.nro
+              ./build/nx/bin/nzportable.nacp
+  prepare-pr-test-content:
+    if: github.event_name == 'pull_request'
+    name: Prepare Pull Request Test Content
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      has_overrides: ${{ steps.dependencies.outputs.has_overrides }}
+      quakec_ref: ${{ steps.dependencies.outputs.quakec_ref }}
+      assets_ref: ${{ steps.dependencies.outputs.assets_ref }}
+    steps:
+      - name: Resolve dependency overrides
+        id: dependencies
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_HEAD_OWNER: ${{ github.event.pull_request.head.repo.owner.login }}
+        run: |
+          quakec_ref=$(sed -nE 's/^[[:space:]]*quakec_ref=([^[:space:]]+)[[:space:]]*$/\1/p' <<< "${PR_BODY}" | head -n 1)
+          assets_ref=$(sed -nE 's/^[[:space:]]*assets_ref=([^[:space:]]+)[[:space:]]*$/\1/p' <<< "${PR_BODY}" | head -n 1)
+          {
+            echo "quakec_ref=${quakec_ref}"
+            echo "assets_ref=${assets_ref}"
+            echo "quakec_repository=${PR_HEAD_OWNER}/quakec"
+            echo "assets_repository=${PR_HEAD_OWNER}/assets"
+            if [[ -n "${quakec_ref}" || -n "${assets_ref}" ]]; then
+              echo "has_overrides=true"
+            else
+              echo "has_overrides=false"
+            fi
+          } >> "${GITHUB_OUTPUT}"
+      - name: Checkout QuakeC
+        if: steps.dependencies.outputs.quakec_ref != ''
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.dependencies.outputs.quakec_repository }}
+          ref: ${{ steps.dependencies.outputs.quakec_ref }}
+          path: test-dependencies/quakec
+          persist-credentials: false
+      - name: Checkout assets
+        if: steps.dependencies.outputs.assets_ref != ''
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.dependencies.outputs.assets_repository }}
+          ref: ${{ steps.dependencies.outputs.assets_ref }}
+          path: test-dependencies/assets
+          persist-credentials: false
+      - name: Install content build dependencies
+        if: steps.dependencies.outputs.has_overrides == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git libicu-dev python3 python3-pip unzip wget zip
+          wget -q https://raw.githubusercontent.com/nzp-team/QCHashTableGenerator/main/requirements.txt
+          python3 -m pip install -r requirements.txt --break-system-packages
+      - name: Build QuakeC override
+        if: steps.dependencies.outputs.quakec_ref != ''
+        run: |
+          bash test-dependencies/quakec/tools/qc-compiler-gnu.sh
+          mkdir -p test-overrides/quakec
+          cp test-dependencies/quakec/build/standard/progs.dat test-overrides/quakec/progs.dat
+      - name: Build assets override
+        if: steps.dependencies.outputs.assets_ref != ''
+        run: |
+          git clone --recursive https://github.com/nzp-team/spawn-zone-tool.git test-dependencies/spawn-zone-tool
+          python3 -m pip install -r test-dependencies/spawn-zone-tool/requirements.txt --break-system-packages
+          bash "${GITHUB_WORKSPACE}/test-dependencies/assets/tools/compile-wads.sh"
+          bash "${GITHUB_WORKSPACE}/test-dependencies/assets/tools/compile-maps.sh" --full --zone-tool-path "${GITHUB_WORKSPACE}/test-dependencies/spawn-zone-tool"
+          bash "${GITHUB_WORKSPACE}/test-dependencies/assets/tools/assemble-assets.sh"
+          mkdir -p test-overrides/assets/{linux,windows,psp,ctr}
+          unzip -oq test-dependencies/assets/tmp/pc-nzp-assets.zip -d test-overrides/assets/pc-package
+          cp -a test-overrides/assets/pc-package/nzp/. test-overrides/assets/linux/
+          cp -a test-overrides/assets/pc-package/nzp/. test-overrides/assets/windows/
+          unzip -oq test-dependencies/assets/tmp/psp-nzp-assets.zip -d test-overrides/assets/psp-package
+          cp -a test-overrides/assets/psp-package/nzportable/nzp/. test-overrides/assets/psp/
+          unzip -oq test-dependencies/assets/tmp/3ds-nzp-assets.zip -d test-overrides/assets/ctr-package
+          cp -a test-overrides/assets/ctr-package/nzportable/nzp/. test-overrides/assets/ctr/
+          rm -rf test-overrides/assets/pc-package test-overrides/assets/psp-package \
+            test-overrides/assets/ctr-package
+      - name: Log repository overrides
+        env:
+          QUAKEC_REF: ${{ steps.dependencies.outputs.quakec_ref }}
+          QUAKEC_REPOSITORY: ${{ steps.dependencies.outputs.quakec_repository }}
+          ASSETS_REF: ${{ steps.dependencies.outputs.assets_ref }}
+          ASSETS_REPOSITORY: ${{ steps.dependencies.outputs.assets_repository }}
+        run: |
+          {
+            echo "### Vril Pull Request Test Overrides"
+            echo
+            if [[ -n "${QUAKEC_REF}" ]]; then
+              echo "* QuakeC: \`${QUAKEC_REPOSITORY}@$(git -C test-dependencies/quakec rev-parse HEAD)\` (requested \`${QUAKEC_REF}\`)"
+            else
+              echo "* QuakeC: N/A"
+            fi
+            if [[ -n "${ASSETS_REF}" ]]; then
+              echo "* Assets: \`${ASSETS_REPOSITORY}@$(git -C test-dependencies/assets rev-parse HEAD)\` (requested \`${ASSETS_REF}\`)"
+            else
+              echo "* Assets: N/A"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
+      - name: Upload test content overrides
+        if: steps.dependencies.outputs.has_overrides == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-test-content-overrides
+          path: test-overrides/
+          retention-days: 1
+  Pull-Request-Test-3DS:
+    if: github.event_name == 'pull_request'
+    name: ${{ matrix.mode }} 3DS Pull Request Tests
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [old, new]
+    runs-on: ubuntu-24.04
+    container:
+      image: ubuntu:24.04
+      options: --shm-size=8192m
+    needs: [Compile-3DSX, prepare-pr-test-content]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download 3DS Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ctr-nzp-3dsx
+          path: testing/working/ctr-artifact
+      - name: Download Test Content Overrides
+        if: needs['prepare-pr-test-content'].outputs.has_overrides == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: pr-test-content-overrides
+          path: testing/overrides
+      - name: Run All
+        env:
+          ASSETS_OVERRIDE_DIRECTORY: ${{ github.workspace }}/testing/overrides/assets/ctr
+          QUAKEC_OVERRIDE_FILE: ${{ github.workspace }}/testing/overrides/quakec/progs.dat
+        run: |
+          cd ./testing
+          ./run_tests.sh --platform ctr --test all --content "$(pwd)/validate" --working-dir working/ --mode ${{ matrix.mode }} --binary "$(pwd)/working/ctr-artifact/nzportable.3dsx"
+      - name: Upload Failure Artifact
+        id: ctr_failure_artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctr-${{ matrix.mode }}-pr-failures
+          path: testing/working/fail/
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Add Failure Summary
+        if: failure() && steps.ctr_failure_artifact.outputs.artifact-url != ''
+        env:
+          ARTIFACT_URL: ${{ steps.ctr_failure_artifact.outputs.artifact-url }}
+        run: |
+          {
+            echo "## ${{ matrix.mode }} 3DS PR Test Failed"
+            echo ""
+            cat testing/working/fail/summary.md
+            echo ""
+            echo "[Failure Artifact](${ARTIFACT_URL})"
+            echo ""
+          } >> "${GITHUB_STEP_SUMMARY}"
+  Pull-Request-Test-PSP:
+    if: github.event_name == 'pull_request'
+    name: PSP ${{ matrix.mode }} Pull Request Tests
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [fat, slim]
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:24.04
+      options: --shm-size=8192m
+    needs: [Compile-EBOOT, prepare-pr-test-content]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Wait for GitHub to keep up..
+        run: sleep 2s
+        shell: bash
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: psp-nzp-eboot
+          path: /psp-nzp-eboot
+      - name: Download Test Content Overrides
+        if: needs['prepare-pr-test-content'].outputs.has_overrides == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: pr-test-content-overrides
+          path: testing/overrides
+      - name: Run All
+        env:
+          ASSETS_OVERRIDE_DIRECTORY: ${{ github.workspace }}/testing/overrides/assets/psp
+          QUAKEC_OVERRIDE_FILE: ${{ github.workspace }}/testing/overrides/quakec/progs.dat
+        run: |
+          cd ./testing
+          ./run_tests.sh --platform psp --test all --content "$(pwd)/validate" --working-dir working/ --mode ${{ matrix.mode }} --binary /psp-nzp-eboot/EBOOT.PBP
+      - name: Upload Failure Artifact
+        id: psp_failure_artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: psp-${{ matrix.mode }}-pr-failures
+          path: testing/working/fail/
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Add Image Comparison Failure Summary
+        if: failure() && steps.psp_failure_artifact.outputs.artifact-url != ''
+        env:
+          ARTIFACT_URL: ${{ steps.psp_failure_artifact.outputs.artifact-url }}
+        run: |
+          {
+            echo "## PSP ${{ matrix.mode }} PR Test Failed"
+            echo ""
+            cat testing/working/fail/summary.md
+            echo ""
+            echo "[Failure Artifact](${ARTIFACT_URL})"
+            echo ""
+          } >> "${GITHUB_STEP_SUMMARY}"
+  Pull-Request-Test-Linux:
+    if: github.event_name == 'pull_request'
+    name: Linux ${{ matrix.arch }} Pull Request Tests
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86
+            runner: ubuntu-24.04
+            native_arch: amd64
+            deb_arch: i386
+          - arch: x86_64
+            runner: ubuntu-24.04
+            native_arch: amd64
+            deb_arch: amd64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            native_arch: arm64
+            deb_arch: arm64
+          - arch: armhf
+            runner: ubuntu-24.04-arm
+            native_arch: arm64
+            deb_arch: armhf
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: debian:12
+      options: --shm-size=8192m
+    needs: [Compile-Linux, prepare-pr-test-content]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download Linux Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}-nzp-sdl
+          path: testing/working/linux-artifact
+      - name: Download Test Content Overrides
+        if: needs['prepare-pr-test-content'].outputs.has_overrides == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: pr-test-content-overrides
+          path: testing/overrides
+      - name: Install compatibility libraries
+        if: matrix.deb_arch != matrix.native_arch
+        env:
+          DEB_ARCH: ${{ matrix.deb_arch }}
+        run: |
+          dpkg --add-architecture "${DEB_ARCH}"
+          apt-get update
+          apt-get install -y \
+            "libgl1:${DEB_ARCH}" "libgl1-mesa-dri:${DEB_ARCH}" "libglu1-mesa:${DEB_ARCH}" \
+            "libsdl2-2.0-0:${DEB_ARCH}" "libsdl2-mixer-2.0-0:${DEB_ARCH}"
+      - name: Run All
+        env:
+          ASSETS_OVERRIDE_DIRECTORY: ${{ github.workspace }}/testing/overrides/assets/linux
+          QUAKEC_OVERRIDE_FILE: ${{ github.workspace }}/testing/overrides/quakec/progs.dat
+        run: |
+          cd ./testing
+          ./run_tests.sh --platform linux --test all --content "$(pwd)/validate" --working-dir working/ --binary "$(pwd)/working/linux-artifact/nzportable"
+      - name: Upload Failure Artifact
+        id: linux_failure_artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}-pr-failures
+          path: testing/working/fail/
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Add Failure Summary
+        if: failure() && steps.linux_failure_artifact.outputs.artifact-url != ''
+        env:
+          ARTIFACT_URL: ${{ steps.linux_failure_artifact.outputs.artifact-url }}
+        run: |
+          {
+            echo "## Linux ${{ matrix.arch }} PR Test Failed"
+            echo ""
+            cat testing/working/fail/summary.md
+            echo ""
+            echo "[Failure Artifact](${ARTIFACT_URL})"
+            echo ""
+          } >> "${GITHUB_STEP_SUMMARY}"
+  Pull-Request-Test-Windows:
+    if: github.event_name == 'pull_request'
+    name: Windows ${{ matrix.arch }} Pull Request Tests
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86
+            runner: ubuntu-24.04
+            native_arch: amd64
+            deb_arch: i386
+          - arch: x86_64
+            runner: ubuntu-24.04
+            native_arch: amd64
+            deb_arch: amd64
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: debian:12
+      options: --shm-size=8192m
+    needs: [Compile-Windows, prepare-pr-test-content]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download Windows Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-${{ matrix.arch }}-nzp-sdl
+          path: testing/working/windows-artifact
+      - name: Download Test Content Overrides
+        if: needs['prepare-pr-test-content'].outputs.has_overrides == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: pr-test-content-overrides
+          path: testing/overrides
+      - name: Install compatibility libraries
+        if: matrix.deb_arch != matrix.native_arch
+        env:
+          DEB_ARCH: ${{ matrix.deb_arch }}
+        run: |
+          dpkg --add-architecture "${DEB_ARCH}"
+          apt-get update
+          apt-get install -y \
+            "libgl1:${DEB_ARCH}" "libgl1-mesa-dri:${DEB_ARCH}" "libglu1-mesa:${DEB_ARCH}" \
+            "libsdl2-2.0-0:${DEB_ARCH}" "libsdl2-mixer-2.0-0:${DEB_ARCH}"
+      - name: Run All
+        env:
+          ASSETS_OVERRIDE_DIRECTORY: ${{ github.workspace }}/testing/overrides/assets/windows
+          QUAKEC_OVERRIDE_FILE: ${{ github.workspace }}/testing/overrides/quakec/progs.dat
+        run: |
+          cd ./testing
+          ./run_tests.sh --platform windows --test all --content "$(pwd)/validate" --working-dir working/ --binary "$(pwd)/working/windows-artifact/nzportable.exe" --reference-platform linux
+      - name: Upload Failure Artifact
+        id: windows_failure_artifact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.arch }}-pr-failures
+          path: testing/working/fail/
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Add Failure Summary
+        if: failure() && steps.windows_failure_artifact.outputs.artifact-url != ''
+        env:
+          ARTIFACT_URL: ${{ steps.windows_failure_artifact.outputs.artifact-url }}
+        run: |
+          {
+            echo "## Windows ${{ matrix.arch }} PR Test Failed"
+            echo ""
+            cat testing/working/fail/summary.md
+            echo ""
+            echo "[Failure Artifact](${ARTIFACT_URL})"
+            echo ""
+          } >> "${GITHUB_STEP_SUMMARY}"
+  Unify-and-Release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    needs: [Compile-Linux, Compile-Windows, Compile-EBOOT, Compile-3DSX, Compile-TNS, Compile-VPK, Compile-NRO]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Wait for GitHub to keep up..
+        run: sleep 2s
+        shell: bash
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./
+      - name: Turn Artifacts into .ZIP archives
+        run: |
+          zip -r -j psp-nzp-eboot.zip psp-nzp-eboot/*
+          zip -r -j ctr-nzp-3dsx.zip ctr-nzp-3dsx/*
+          zip -r -j nspire-nzp-tns.zip nspire-nzp-tns/*
+          zip -r -j psp2-nzp-vpk.zip psp2-nzp-vpk/*
+          zip -r -j nx-nzp-nro.zip nx-nzp-nro/*
+          zip -r -j linux-x86-nzp-sdl.zip linux-x86-nzp-sdl/*
+          zip -r -j linux-x86_64-nzp-sdl.zip linux-x86_64-nzp-sdl/*
+          zip -r -j linux-arm64-nzp-sdl.zip linux-arm64-nzp-sdl/*
+          zip -r -j linux-armhf-nzp-sdl.zip linux-armhf-nzp-sdl/*
+          zip -r -j windows-x86-nzp-sdl.zip windows-x86-nzp-sdl/*
+          zip -r -j windows-x86_64-nzp-sdl.zip windows-x86_64-nzp-sdl/*
+      - name: Generate Build Date
+        id: date
+        run: echo "::set-output name=date::$(date +'%Y-%m-%d-%H-%M-%S')"
+      - name: Delete Old Release
+        uses: dev-drprasad/delete-tag-and-release@v0.2.1
+        with:
+          delete_release: true
+          tag_name: bleeding-edge
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: bleeding-edge
+          release_name: Automated Release ${{ steps.date.outputs.date }}
+          body: |
+            This is a **bleeding edge** NZ:P PSP/PSVITA/3DS/NSPIRE/PC release, stability is not guarenteed.
+
+            To install:
+            - Grab the .ZIP archive for your platform
+            - PSP: Extract the `EBOOT.PBP` to `/PSP/GAME/nzportable/`
+            - PS VITA: Install `nzportable.vpk` using VitaShell.
+            - 3DS: Extract `nzportable.3dsx` to `/3ds/nzportable/`.
+            - NSPIRE: Sync `nzportable.tns` to `/`.
+            - PC: Extract the archive for your CPU architecture and run `nzportable`.
+          draft: true
+          prerelease: false
+      - name: Upload PSP Archive
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./psp-nzp-eboot.zip
+          asset_name: psp-nzp-eboot.zip
+          asset_content_type: application/zip
+      - name: Upload 3DS Archive
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./ctr-nzp-3dsx.zip
+          asset_name: ctr-nzp-3dsx.zip
+          asset_content_type: application/zip
+      - name: Upload NSPIRE Archive
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./nspire-nzp-tns.zip
+          asset_name: nspire-nzp-tns.zip
+          asset_content_type: application/zip
+      - name: Upload PSVITA Archive
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./psp2-nzp-vpk.zip
+          asset_name: psp2-nzp-vpk.zip
+          asset_content_type: application/zip
+      - name: Upload Nintendo Switch Archive
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./nx-nzp-nro.zip
+          asset_name: nx-nzp-nro.zip
+          asset_content_type: application/zip
+      - name: Upload Linux x86 Archive
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./linux-x86-nzp-sdl.zip
+          asset_name: linux-x86-nzp-sdl.zip
+          asset_content_type: application/zip
+      - name: Upload Linux x86_64 Archive
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./linux-x86_64-nzp-sdl.zip
+          asset_name: linux-x86_64-nzp-sdl.zip
+          asset_content_type: application/zip
+      - name: Upload Linux arm64 Archive
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./linux-arm64-nzp-sdl.zip
+          asset_name: linux-arm64-nzp-sdl.zip
+          asset_content_type: application/zip
+      - name: Upload Linux armhf Archive
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./linux-armhf-nzp-sdl.zip
+          asset_name: linux-armhf-nzp-sdl.zip
+          asset_content_type: application/zip
+      - name: Upload Windows x86 Archive
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./windows-x86-nzp-sdl.zip
+          asset_name: windows-x86-nzp-sdl.zip
+          asset_content_type: application/zip
+      - name: Upload Windows x86_64 Archive
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./windows-x86_64-nzp-sdl.zip
+          asset_name: windows-x86_64-nzp-sdl.zip
+          asset_content_type: application/zip
+      - name: Publish Release
+        uses: StuYarrow/publish-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          id: ${{ steps.create_release.outputs.id }}

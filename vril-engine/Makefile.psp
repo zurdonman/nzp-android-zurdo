@@ -1,0 +1,188 @@
+MAKEFLAGS+="-j -l $(shell grep -c ^processor /proc/cpuinfo) "
+PSPSDK = $(shell psp-config --pspsdk-path)
+PSPLIBSDIR = $(PSPSDK)/..
+
+TARGET = nzportable
+PSP_EBOOT_TITLE = Nazi Zombies: Portable
+
+PSP_EBOOT_ICON	= source/platform/psp/pics/icon.png
+PSP_EBOOT_SND0	= source/platform/psp/pics/snd0.at3
+PSP_EBOOT_PIC1	= source/platform/psp/pics/pic.png
+
+PSP_FW_VERSION=400
+PSP_LARGE_MEMORY=1
+
+EXTRA_TARGETS = _build_info.h install
+
+ifeq ($(USE_GPROF),1)
+GPROF_LIBS      = -lpspprof
+GPROF_FLAGS		= -pg -DPROFILE
+else
+ifeq ($(DEBUG),1)
+BUILD_PRX		= 1
+MODE=-DKERNEL_MODE
+endif
+endif
+
+COMMON_OBJS = \
+	source/system.o \
+	source/startup.o \
+	source/platform/psp/battery.o \
+	source/platform/psp/thread.o \
+	source/platform/psp/VramExt.o \
+	source/input.o \
+	source/platform/psp/input.o \
+	source/platform/psp/main.o \
+	source/platform/psp/math.o \
+	source/platform/psp/sound.o \
+	source/platform/psp/system.o \
+	source/platform/psp/module.o \
+	source/platform/psp/network.o \
+	source/platform/psp/network_psp.o \
+	source/platform/psp/gethost.o \
+	source/platform/psp/fnmatch.o \
+	source/platform/psp/music.o \
+	source/snd_music.o \
+	source/platform/psp/Random.o \
+	\
+	source/tests/test_handler.o \
+	source/tests/test_map_boot.o \
+	source/tests/test_restart.o \
+	source/tests/test_qcvm.o \
+	source/chase.o \
+	source/cl_demo.o \
+	source/cl_input.o \
+	source/cl_main.o \
+	source/cl_parse.o \
+	source/cl_tent.o \
+	source/cl_slist.o \
+    source/cmd.o \
+	source/platform/psp/common.o \
+	source/console.o \
+	source/crc.o \
+	source/cvar.o \
+	source/host.o \
+	source/host_cmd.o \
+	source/keys.o \
+	source/mathlib.o \
+	source/matrixlib.o \
+	source/menu/menu_sys.o \
+	source/menu/menu.o \
+	source/menu/menu_custommaps.o \
+	source/menu/menu_helper.o \
+	source/menu/menu_main.o \
+	source/menu/menu_stockmaps.o \
+	source/menu/menu_lobby.o \
+	source/menu/menu_gamesettings.o \
+	source/menu/menu_configuration.o \
+	source/menu/menu_video.o \
+	source/menu/menu_audio.o \
+	source/menu/menu_controls.o \
+	source/menu/menu_bindings.o \
+	source/menu/menu_accessibility.o \
+	source/menu/menu_pause.o \
+	source/menu/menu_loadscreen.o \
+	source/menu/menu_bios.o \
+	source/menu/menu_credits.o \
+	source/platform/psp/net_dgrm.o \
+	source/net_loop.o \
+	source/platform/psp/net_main.o \
+	source/net_vcr.o \
+	source/qcvm/pr_cmds.o \
+	source/qcvm/pr_json.o \
+	source/qcvm/cJSON.o \
+	source/qcvm/pr_edict.o \
+	source/qcvm/pr_exec.o \
+	source/snd_dma.o \
+	source/snd_mem.o \
+	source/snd_mix.o \
+	source/render/r_hud.o \
+	source/sv_main.o \
+	source/sv_move.o \
+	source/sv_phys.o \
+	source/sv_user.o \
+	source/view.o \
+	source/wad.o \
+	source/world.o \
+	source/zone.o \
+	source/crypter.o \
+	source/render/r_fog.o \
+	source/render/r_entity_fragments.o \
+	source/render/r_color_quantization.o \
+	source/render/r_light.o \
+	source/render/r_mdl.o \
+	source/render/r_surface.o \
+	source/images.o \
+
+HARDWARE_VIDEO_ONLY_OBJS = \
+	source/platform/psp/clipping.o \
+	source/platform/psp/vram.o \
+    source/platform/psp/gu/gu_psp.o \
+    source/platform/psp/gu/gu_resample.o \
+    source/platform/psp/gu/gu_fullbright.o \
+    source/platform/psp/gu/gu_draw.o \
+    source/render/r_particles.o \
+	source/render/r_decals.o \
+	source/platform/psp/gu/gu_hyena.o \
+    source/platform/psp/gu/gu_main.o \
+    source/platform/psp/gu/gu_mesh.o \
+    source/platform/psp/gu/gu_misc.o \
+    source/platform/psp/gu/gu_model.o \
+    source/render/r_screen.o \
+    source/platform/psp/gu/gu_surface.o \
+    source/platform/psp/gu/gu_warp.o \
+    source/platform/psp/gu/gu_dxtn.o
+HARDWARE_VIDEO_ONLY_FLAGS = -DPSP_HARDWARE_VIDEO
+
+OBJS = $(COMMON_OBJS) $(HARDWARE_VIDEO_ONLY_OBJS)
+
+GU_LIBS	= -lpspgum_vfpu -lpspvfpu -lpspgu -lpspvram
+AUDIO_LIBS	= -lpspaudiolib -lpspaudio -lpspaudiocodec -lpspmp3 source/platform/psp/m33libs/libpspkubridge.a
+
+MISC_LIBS	= -lpsppower -lpspmath -lpsphprm -ljpeg -lpng -lz
+NET_LIBS    = -lpspwlan -lpspnet_adhoc -lpspnet_adhocctl
+STD_LIBS	= -lstdc++ -lm -lc
+LIBS		= $(GPROF_LIBS) $(GU_LIBS) $(AUDIO_LIBS) $(MISC_LIBS) $(STD_LIBS) $(NET_LIBS)
+
+CFLAGS = -ffast-math -O3 -Ofast -G0 -Wall $(GPROF_FLAGS) -DPSP $(MODE) $(HARDWARE_VIDEO_ONLY_FLAGS) \
+		-DSWIZZLE32 -DPSP_MP3_HWDECODE -DFULLBRIGHT -DHL_RENDER -Wno-strict-aliasing -DPSP_VFPU -DPLATFORM_DIRECTORY="psp" \
+		-DPLATFORM_RENDERER="gu" -DMAX_AI_COUNT=12 -DRENDERER_SUPPORTS_DITHERING -DPLATFORM_KEYBOARD_OSK \
+		-DPLATFORM_HAS_ONE_ANALOG_STICK
+
+ifeq ($(WERROR),1)
+CFLAGS 		+= -Werror
+endif
+
+ifeq ($(FANALYZER),1)
+CFLAGS		+= -fanalyzer
+endif
+
+CXXFLAGS = -fno-rtti -Wcast-qual -Wno-write-strings -Wno-sign-compare -Wno-strict-aliasing
+ASFLAGS = $(CFLAGS) -c
+
+include $(PSPSDK)/lib/build.mak
+
+%.o: %.c
+	$(CC) -std=gnu99 $(CFLAGS) -c $< -o $@
+
+_build_info.h:
+	rm -rf source/_build_info.h
+	echo "#define GIT_HASH \"$(shell git rev-parse --short HEAD)$(shell git diff --quiet || echo -dirty)\"" > source/_build_info.h
+	echo "#define GIT_BRANCH \"$(shell git rev-parse --abbrev-ref HEAD)\"" >> source/_build_info.h
+	echo "#define BUILD_DATE \"$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")\"" >> source/_build_info.h
+
+clean:
+	rm -rf build/
+	rm -rf source/_build_info.h
+	find . -type f -name '*.o' -exec rm {} +
+
+install: EBOOT.PBP
+	mkdir -p build/psp/
+	mkdir -p build/psp/bin
+	mv EBOOT.PBP build/psp/bin/
+ifeq ($(DEBUG),1)
+	mv *.prx build/psp/
+endif
+	mv *.elf build/psp/
+	mv *.SFO build/psp/
+	@echo DONE

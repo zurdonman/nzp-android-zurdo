@@ -1,0 +1,188 @@
+/*
+	server/tests/test_score.qc
+
+	Unit tests for score system
+
+	Copyright (C) 2021-2025 NZ:P Team
+
+	This program is free software; you can redistribute it and/or
+	modify it under the terms of the GNU General Public License
+	as published by the Free Software Foundation; either version 2
+	of the License, or (at your option) any later version.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+	See the GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program; if not, write to:
+
+		Free Software Foundation, Inc.
+		59 Temple Place - Suite 330
+		Boston, MA  02111-1307, USA
+
+*/
+float(float condition, string message) Test_Assert;
+void(string message) Test_Skip;
+
+//
+// Test_AddScore_NonClient()
+// Attempts to give points to a non-client.
+// (https://github.com/nzp-team/nzportable/issues/783)
+//
+void() Test_AddScore_NonClient =
+{
+    entity some_ent = spawn();
+    Player_AddScore(some_ent, 10, false);
+    remove(some_ent);
+};
+
+//
+// Test_AddScore_DamageTypes()
+// Asserts we are giving correct amount
+// of score for every AI damage type.
+// (https://github.com/nzp-team/nzportable/issues/776)
+//
+void() Test_AddScore_DamageTypes =
+{
+    float styles[] = {    
+        DMG_TYPE_HEADSHOT, 
+        DMG_TYPE_MELEE, 
+        DMG_TYPE_TESLA, 
+        DMG_TYPE_FLAMETHROWER, 
+        DMG_TYPE_GRENADE, 
+        DMG_TYPE_EXPLOSIVE,
+        DMG_TYPE_LOWERTORSO,
+        DMG_TYPE_UPPERTORSO,
+        DMG_TYPE_FLOPPER
+    };
+
+    float scores[] = {
+        DMG_SCORE_HEADSHOT,
+        DMG_SCORE_MELEE,
+        DMG_SCORE_GRENADE,
+        DMG_SCORE_GRENADE,
+        DMG_SCORE_GRENADE,
+        DMG_SCORE_EXPLOSIVE,
+        DMG_SCORE_LOWERTORSO,
+        DMG_SCORE_UPPERTORSO,
+        DMG_SCORE_FLOPPER
+    };
+
+    for (float i = 0; i < styles.length; i++) {
+        float score_pre = self.points;
+
+        DieHandler(self, styles[i]);
+
+        float score_post = self.points;
+        float score_delta = score_post - score_pre;
+
+        Test_Assert((score_delta == scores[i]), sprintf("Unexpected score earned, expected [%d] but got [%d]!", scores[i], score_delta));
+    }
+};
+
+//
+// Test_AddScore_MysteryBoxLeave()
+// Asserts we get exact amount of points
+// back when the Mystery Box attempts
+// to leave.
+// (https://github.com/nzp-team/nzportable/issues/775)
+//
+void() Test_AddScore_MysteryBoxLeave =
+{
+    precache_sound("sounds/misc/giggle.wav");
+    
+    float score_pre = self.points;
+
+    entity mystery_box_ent = spawn();
+    entity owner_ent = spawn();
+    entity old_self = self;
+
+    self = mystery_box_ent;
+    mystery_box();
+    self.owner = owner_ent;
+    self.owner.owner = old_self;
+    MBOX_PresentTeddy();
+    self = old_self;
+
+    float score_post = self.points;
+    Test_Assert((score_post - score_pre == mystery_box_cost), "Unexpected points earned!");
+
+    remove(mystery_box_ent);
+    remove(owner_ent);
+};
+
+
+//
+// Test_AddScore_PhD_GunGame()
+// Asserts PhD Flopper damage does not award score
+// toward weapon progression in Gun Game.
+// (https://github.com/nzp-team/nzportable/issues/1363)
+//
+void() Test_AddScore_PhD_GunGame =
+{
+    float old_gamemode = current_gamemode;
+    current_gamemode = GAMEMODE_GUNGAME;
+
+    float points_earned = Gamemode_ScoreForDamage(DMG_SCORE_FLOPPER, DMG_TYPE_FLOPPER);
+
+    current_gamemode = old_gamemode;
+    Test_Assert((points_earned == 0), sprintf("Unexpected score earned, expected 0 but got [%d]!", points_earned));
+};
+
+//
+// Test_ScoreSystem_ColdWar()
+// Asserts we are giving correct amount
+// of score for PhD Flopper in Festive
+// Should return 90
+// (https://github.com/nzp-team/nzportable/issues/1363)
+//
+void() Test_ScoreSystem_ColdWar =
+{
+	float old_score_system = game_modifiers.gameplay.ai.score_system;
+	game_modifiers.gameplay.ai.score_system = SCORE_SYSTEM_CW;
+
+	Test_Assert(ScoreSystem_ScoreForDamage(DMG_SCORE_STDDAMAGE, DMG_TYPE_UPPERTORSO) == 0,
+		"Cold War scoring awarded points for a non-lethal hit!");
+	Test_Assert(ScoreSystem_ScoreForDamage(DMG_SCORE_HEADSHOT, DMG_TYPE_HEADSHOT) == 115,
+		"Cold War scoring awarded the wrong headshot kill score!");
+	Test_Assert(ScoreSystem_ScoreForDamage(DMG_SCORE_MELEE, DMG_TYPE_MELEE) == 115,
+		"Cold War scoring awarded the wrong melee kill score!");
+	Test_Assert(ScoreSystem_ScoreForDamage(DMG_SCORE_FLOPPER, DMG_TYPE_FLOPPER) == 90,
+		"Cold War scoring awarded the wrong regular kill score!");
+
+	game_modifiers.gameplay.ai.score_system = old_score_system;
+};
+
+//
+// Test_ScoreSystem_BlackOps4()
+// Checks the per-zombie score cap and final-blow bonuses.
+//
+void() Test_ScoreSystem_BlackOps4 =
+{
+	entity zombie = spawn();
+	zombie.max_health = 100;
+	zombie.health = 100;
+
+	float first_hit = ScoreSystem_BO4DamageScore(zombie, 10, false);
+	zombie.health -= 10;
+	float second_hit = ScoreSystem_BO4DamageScore(zombie, 40, false);
+	zombie.health -= 40;
+	float final_hit = ScoreSystem_BO4DamageScore(zombie, 50, true);
+	float headshot_bonus = ScoreSystem_BO4KillBonus(DMG_TYPE_HEADSHOT);
+
+	Test_Assert(first_hit == 10, "Black Ops 4 scoring did not apply its minimum hit award!");
+	Test_Assert(first_hit + second_hit + final_hit == 90,
+		"Black Ops 4 damage scoring exceeded its per-zombie cap!");
+	Test_Assert(first_hit + second_hit + final_hit + headshot_bonus == 120,
+		"Black Ops 4 headshot scoring exceeded its base cap or bonus!");
+
+	Test_Assert(SCORE_BO4_MAX_PER_ZOMBIE + ScoreSystem_BO4KillBonus(DMG_TYPE_MELEE) == 150,
+		"Black Ops 4 melee scoring did not total 150 points!");
+	Test_Assert(SCORE_BO4_MAX_PER_ZOMBIE + ScoreSystem_BO4KillBonus(DMG_TYPE_UPPERTORSO) == 90,
+		"Black Ops 4 regular scoring did not total 90 points!");
+
+	remove(zombie);
+};

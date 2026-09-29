@@ -1,0 +1,344 @@
+/*
+Copyright (C) 2025-2026 NZ:P Team
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+
+See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+*/
+#ifndef _MENU_DEFS_H_
+#define _MENU_DEFS_H_
+// ===========
+// Menu state
+// ===========
+extern int 				m_state;
+extern int				m_previous_state;
+#define	m_none			0
+#define	m_start			1
+#define	m_main			2
+#define	m_pause			3
+#define	m_stockmaps 	4
+#define	m_custommaps	5
+#define m_lobby			6
+#define m_gamesettings	7
+#define	m_setup			8
+#define	m_net			9
+#define m_configuration 10
+#define	m_video			11
+#define m_audio			12
+#define m_accessibility 13
+#define m_controls		14
+#define	m_credits		15
+#define	m_serialconfig	16
+#define	m_modemconfig	17
+#define	m_lanconfig		18
+#define	m_gameoptions	19
+#define	m_search		20
+#define	m_slist			21
+#define m_bindings		22
+#define m_bios 			23
+#define m_gyro			24
+#define m_touch			25
+///////////////////////////
+///////////////////////////
+///////////////////////////
+
+#define MAX_MENU_BUTTONS 11
+
+// Curent menu state and buttons are stored here
+// when m_state is flipped, the respective menu "Set"
+// function will clear the structs. They are then rebuilt
+// during the drawing process.
+
+typedef struct menu_button_s {
+	qboolean		enabled;
+	int				index;
+	char			*name;
+	void			(*on_activate)(void);
+	int             x, y, width, height;
+	qboolean        is_slider;
+	int             slider_x, slider_y, slider_width, slider_height;
+	float           slider_min, slider_max, slider_step;
+	char            *slider_cvar;
+} menu_button_t;
+
+typedef struct menu_s {
+    menu_button_t	*button;
+    int				cursor;
+	int				slider_pressed;
+} menu_t;
+
+extern menu_t			current_menu;
+extern menu_button_t	current_menu_buttons[MAX_MENU_BUTTONS];
+
+// Definitions for dynamic menu scaling.
+// menu is based on a resolution of 320x240 (4:3)
+// and then we appropriately scale per device
+
+typedef struct menuframe_s {
+	int		point_x;
+	int		point_y;
+} menuframe_t;
+
+extern menuframe_t 		current_frame;
+
+#define UI_ANCHOR_CENTER        				0
+#define UI_ANCHOR_LEFT       					1
+#define UI_ANCHOR_RIGHT      					2
+#define UI_ANCHOR_TOP    						3
+#define UI_ANCHOR_BOTTOM  						4
+
+#define UI_FLIPTEXTPOS							1
+
+extern qboolean	        m_recursiveDraw;
+
+// set true if user is currently
+// binding a button
+extern qboolean			in_bind;
+// ammount of current bind options
+#define					NUM_BIND_COMMANDS		20
+
+#define                 MENU_SND_NAVIGATE   	0
+#define                 MENU_SND_ENTER      	1
+#define                 MENU_SND_BEEP       	2
+
+#define				    MENU_BUTTON_ACTIVE		0
+#define				    MENU_BUTTON_INACTIVE 	1
+
+#define                 MENU_SOC_DOCS           1
+#define                 MENU_SOC_YOUTUBE        2
+#define                 MENU_SOC_BLUESKY        3
+#define                 MENU_SOC_PATREON        4
+
+#define					MENU_COLOR_WHITE		0
+#define					MENU_COLOR_YELLOW		1
+
+#define					MENU_SLIDER_RIGHT		1
+#define					MENU_SLIDER_LEFT		-1
+
+// Platform specific character representing
+// which button is default bound to "enter"
+// a menu
+extern char*            enter_char;
+
+// Menu background and timer
+extern image_t          menu_background;
+extern float            menu_time;
+extern float            menu_changetime;
+extern float            menu_starttime;
+
+// Constant menu images
+extern image_t          menu_bk;
+extern image_t          menu_social;
+extern image_t			menu_badges;
+extern image_t 			menu_portraits[3];
+
+// Build date string (buffer estatico: un char* corrupto crasheaba el HUD)
+extern char             game_build_date[64];
+
+// Loading screens
+extern int          	loadingScreen;
+extern qboolean         loadscreeninit;
+void LoadingScreen_Begin(const char *map_name);
+qboolean LoadingScreen_IsActive(void);
+qboolean LoadingScreen_IsWaiting(void);
+qboolean LoadingScreen_IntroComplete(void);
+qboolean LoadingScreen_ShouldWaitForSpawn(void);
+qboolean LoadingScreen_Key(int key, qboolean down);
+void LoadingScreen_Update(void);
+void LoadingScreen_Finish(void);
+
+// Custom maps
+typedef struct
+{
+	qboolean 	occupied;
+	int 	 	map_allow_game_settings;
+	int 	 	map_use_thumbnail;
+	char* 		map_name;
+	char* 		map_name_pretty;
+	char* 		map_desc[8];
+	char* 		map_author;
+	char* 		map_thumbnail_path;
+} usermap_t;
+
+#define                 MAX_CUSTOMMAPS 64
+extern usermap_t        custom_maps[MAX_CUSTOMMAPS];
+extern image_t          menu_usermap_image[MAX_CUSTOMMAPS];
+extern int              num_user_maps;
+extern int              num_custom_images;
+extern int     			custom_map_pages;
+
+// Currently selected map
+extern char*			current_selected_bsp;
+extern char* 		    map_loadname;
+extern char* 		    map_loadname_pretty;
+
+// True if last menu was a single-player menu
+extern qboolean		    menu_is_solo;
+
+// Bar heights are constant and used
+// in multiple calculations
+extern int 			    big_bar_height;
+extern int 			    small_bar_height;
+
+// Width and height of a character
+// set by platform scale
+#define	_CHAR_WIDTH 		8
+#define	_CHAR_HEIGHT 		8
+
+// Menu specific key abstractions
+extern int				MENU_KEY_CONFIRM;
+image_t Menu_GetConfirmIcon(void);
+extern int				MENU_KEY_BACK;
+extern int				MENU_KEY_DELETE;
+extern int				MENU_KEY_SAVE_INPUT;
+
+// Holds the button images for the
+// osk prompt
+extern image_t 			osk_button[4];
+
+// Stock map struct which holds the current
+// stockmaps loaded
+typedef struct
+{
+    char* 	bsp_name;
+	int		category;
+    int 	array_index;
+} StockMaps;
+
+extern StockMaps        stock_maps[8];
+extern int 			    num_stock_maps;
+
+// Different categories for maps
+#define MAP_CATEGORY_USER       0
+#define MAP_CATEGORY_WAW        1
+#define MAP_CATEGORY_NZP        2
+#define MAP_CATEGORY_NZPBETA    3
+#define MAP_CATEGORY_BLACKOPSDS 4
+
+// We need gamemode cvar values
+extern cvar_t 			sv_gamemode;
+extern cvar_t 			sv_difficulty;
+extern cvar_t 			sv_startround;
+extern cvar_t 			sv_magic;
+extern cvar_t 			sv_headshotonly;
+extern cvar_t 			sv_maxai;
+extern cvar_t 			sv_fastrounds;
+
+extern int menu_paus_submenu;
+
+/*
+===========================================================================
+===========================================================================
+FUNCTION DEFINES
+===========================================================================
+===========================================================================
+*/
+
+void UI_SetAlignment (int alignment_x, int alignment_y);
+void UI_Align (int *x, int *y);
+int UI_X(int x);
+int UI_Y(int y);
+int UI_W(int w);
+int UI_H(int h);
+void strip_newline(char *s);
+char* strtolower(char* s);
+char* strtoupper(char* s);
+void Menu_SetSound (int type);
+void Menu_InitUI (void);
+void Menu_SetInputDevice (in_device_t device);
+int Menu_GetActiveMenuButtons (void);
+void Menu_IncreaseCursor (void);
+void Menu_DecreaseCursor (void);
+void Menu_ButtonPress (void);
+void Menu_MouseMove (int x, int y);
+qboolean Menu_MouseButton (int x, int y, qboolean down);
+void Menu_IncrementSlider (int dir);
+qboolean Menu_IsButtonHovered (int button_index);
+void Menu_ResetMenuButtons (void);
+void Menu_KeyInput (int key);
+void Menu_UnbindCommand (char *command);
+void Menu_WaitForKeybind (int key);
+
+void Menu_LoadPics (void);
+void Menu_SetSound (int type);
+image_t Menu_PickBackground (void);
+void Menu_DrawTextCentered (int x, int y, char* text, int r, int g, int b, int a);
+void Menu_InitStockMaps (void);
+qboolean Menu_IsStockMap (char *bsp_name);
+void Menu_CustomMaps_MapFinder (void);
+int Menu_UserMapSupportsGameSettings (char *bsp_name);
+void Map_SetDefaultValues (void);
+void Menu_LoadMap (char *selected_map);
+void Menu_ExitMap (void);
+void Menu_DrawCustomBackground (qboolean draw_images);
+void Menu_DrawTitle (char *title_name, int color);
+void Menu_DrawButton (int order, int button_index, char* button_name, char* button_summary, void *on_activate);
+void Menu_DrawGreyButton (int order, char* button_name);
+void Menu_DrawMapButton (int order, int button_index, int usermap_index, int map_category, char* bsp_name, void *on_activate);
+void Menu_DrawBioButton (int order, int button_index, char* name, char* map, int portrait, vec2_t portrait_coords, void *on_activate);
+void Menu_DrawOptionButton(int order, char* selection_name);
+#ifdef PLATFORM_USES_GENERIC_GLYPHS
+void Menu_DrawControllerGlyphPreview(int order);
+#endif
+void Menu_DrawOptionSlider(int order, int button_index, float min_option_value, float max_option_value, cvar_t option, char* _option_string, qboolean zero_to_one, qboolean draw_option_string, float increment_amount);
+void Menu_DrawLobbyInfo (char* bsp_name, char* info_gamemode, char* info_difficulty, char* info_startround, char* info_magic, char* info_headshotonly, char* info_fastrounds, char* info_hordesize);
+void Menu_DrawOptionKey (int order, char *current_bind);
+void Menu_DrawBuildDate ();
+void Menu_DrawDivider (float order);
+void Menu_DrawSocialBadge (int order, int which);
+void Menu_DrawMapPanel (void);
+void Menu_Preload_Custom_Images (void);
+void Menu_DrawCreditHeader (int order, char *header);
+void Menu_DrawCreditContributor (int order, int sub_order, char *header);
+
+void Menu_DrawLoadingFill(void);
+void Menu_DrawSubMenu (char *line_one, char *line_two);
+void Menu_DrawCharacterPanel(char **description);
+void Menu_DrawFill (int x, int y, int width, int height, int r, int g, int b, int a);
+void Menu_DrawString (int x, int y, char* string, int r, int g, int b, int a, float scale, int FLIP_TEXT_POS_START);
+void Menu_DrawStringCentered (int x, int y, char* text, int r, int g, int b, int a);
+
+void Menu_StockMaps_Set (void);
+void Menu_Pause_Set(void);
+void Menu_Resume(void);
+void Menu_Keys_Set(void);
+void Menu_Video_Set(void);
+void Menu_Restart_Set(void);
+void Menu_Credits_Set(void);
+void Menu_Exit_Set(void);
+void Menu_GameOptions_Set(void);
+void Menu_CustomMaps_Set(void);
+void Menu_Lobby_Set(void);
+void Menu_GameSettings_Set(void);
+void Menu_Bios_Set(void);
+void Menu_Video_Set (void);
+void Menu_Audio_Set (void);
+void Menu_Controls_Set (void);
+#ifdef PLATFORM_SUPPORTS_GYRO
+void Menu_Gyro_Set (void);
+#endif
+void Menu_Touch_Set (void);
+void Menu_Bindings_Set (void);
+void Menu_Accessibility_Set (void);
+
+// Platform specifics
+char *LoadingScreen_ReturnTip(void);
+void LoadingScreen_DrawProgressBar(void);
+void LoadingScreen_ClearProgress(void);
+void LoadingScreen_CompleteProgress(void);
+void LoadingScreen_BeginProgressPhase(float start, float end, int total);
+void LoadingScreen_AdvanceProgress(void);
+void LoadingScreen_MarkPrecacheComplete(void);
+
+#endif // _MENU_DEFS_H_

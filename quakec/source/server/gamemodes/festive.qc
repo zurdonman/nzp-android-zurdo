@@ -1,0 +1,475 @@
+/*
+	server/gamemodes/festive.qc
+
+	Core Logic for Festive (Cold War) Game Mode.
+
+	Copyright (C) 2021-2025 NZ:P Team
+
+	This program is free software; you can redistribute it and/or
+	modify it under the terms of the GNU General Public License
+	as published by the Free Software Foundation; either version 2
+	of the License, or (at your option) any later version.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+	See the GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program; if not, write to:
+
+		Free Software Foundation, Inc.
+		59 Temple Place - Suite 330
+		Boston, MA  02111-1307, USA
+
+*/
+
+float festive_ran_post_init_logic;
+string festive_override_music;
+float festive_useprint_ammo;
+
+void() Gamemode_Festive_Init =
+{
+	festive_useprint_ammo = Useprint_Register("Hold %b to buy Ammo for %s", '1 1 1');
+    precache_model(GetWeaponModel(W_BOWIE, false));
+    precache_sound("sounds/modes/festive/rnd_splash.wav");
+    precache_sound("sounds/modes/festive/rnd_start.wav");
+    precache_sound("sounds/modes/festive/rnd_end.wav");
+    precache_sound("sounds/modes/festive/rnd_dog_start.wav");
+    precache_sound("sounds/modes/festive/rnd_dog_end.wav");
+    precache_sound("sounds/modes/festive/byebye.wav");
+    precache_sound("sounds/modes/festive/fetch.wav");
+    precache_sound("sounds/modes/festive/tear.wav");
+    precache_sound("sounds/modes/festive/halloween/mbox_open.wav");
+
+    precache_model("models/props/derped/ammo_can.mdl");
+
+    game_modifiers.gameplay.perksacola.perk_quickrevive_health_regeneration_multiplier = 2;
+    game_modifiers.gameplay.perksacola.perk_juggernog_player_health = 250;
+    game_modifiers.gameplay.perksacola.perk_deadshot_headshot_damage_multiplier = 1.35;
+
+    game_modifiers.gameplay.packapunch.packapunch_supports_upgrade_tiers = true;
+    game_modifiers.gameplay.packapunch.packapunch_upgrades_instantly = true;
+
+    game_modifiers.gameplay.ai.round_health_cap = 55;
+	game_modifiers.gameplay.ai.score_system = SCORE_SYSTEM_CW;
+
+    game_modifiers.gameplay.rounds.delay_between_rounds = 4.5;
+    if (game_modifiers.gameplay.rounds.sounds.game_start != "") strunzone(game_modifiers.gameplay.rounds.sounds.game_start);
+    game_modifiers.gameplay.rounds.sounds.game_start = strzone("sounds/modes/festive/rnd_splash.wav");
+    if (game_modifiers.gameplay.rounds.sounds.new_hound_round != "") strunzone(game_modifiers.gameplay.rounds.sounds.new_hound_round);
+    game_modifiers.gameplay.rounds.sounds.new_hound_round = strzone("sounds/modes/festive/rnd_dog_start.wav");
+    if (game_modifiers.gameplay.rounds.sounds.end_hound_round != "") strunzone(game_modifiers.gameplay.rounds.sounds.end_hound_round);
+    game_modifiers.gameplay.rounds.sounds.end_hound_round = strzone("sounds/modes/festive/rnd_dog_end.wav");
+    for (float i = 0; i < 4; i++) {
+        if (game_modifiers.gameplay.rounds.sounds.hound_round_taunts[i] != "") strunzone(game_modifiers.gameplay.rounds.sounds.hound_round_taunts[i]);
+        game_modifiers.gameplay.rounds.sounds.hound_round_taunts[i] = "";
+    }
+    game_modifiers.gameplay.rounds.sounds.hound_round_taunts[0] = strzone("sounds/modes/festive/fetch.wav");
+    game_modifiers.gameplay.rounds.sounds.hound_round_taunts[1] = strzone("sounds/modes/festive/tear.wav");
+    if (game_modifiers.interface.perksacola.position_style != "") strunzone(game_modifiers.interface.perksacola.position_style);
+    game_modifiers.interface.perksacola.position_style = strzone("cw");
+    for (float i = 0; i < 4; i++) {
+        if (game_modifiers.gameplay.rounds.sounds.new_round[i] != "") strunzone(game_modifiers.gameplay.rounds.sounds.new_round[i]);
+        game_modifiers.gameplay.rounds.sounds.new_round[i] = "";
+    }
+    game_modifiers.gameplay.rounds.sounds.new_round[0] = strzone("sounds/modes/festive/rnd_start.wav");
+    for (float i = 0; i < 4; i++) {
+        if (game_modifiers.gameplay.rounds.sounds.end_round[i] != "") strunzone(game_modifiers.gameplay.rounds.sounds.end_round[i]);
+        game_modifiers.gameplay.rounds.sounds.end_round[i] = "";
+    }
+    game_modifiers.gameplay.rounds.sounds.end_round[0] = strzone("sounds/modes/festive/rnd_end.wav");
+    game_modifiers.gameplay.player.start_health = 150;
+
+    game_modifiers.gameplay.powerups.powerup_free_perk.enabled = true;
+    game_modifier_powerup_free_perk_is_rare = true;
+    game_modifiers.gameplay.powerups.powerup_max_ammo.fills_magazine = true;
+    game_modifiers.gameplay.powerups.powerup_bonus_points.enabled = true;
+    game_modifier_powerup_toast_for_all = true;
+    game_modifier_hellhound_fog_color = "200 525 60 25 45";
+    game_modifier_default_fog_color = "240 2000 60 45 45";
+    game_modifiers.interface.rounds.color = '80 40 0';
+    sprint_max_time = 10000000;
+
+    // Holiday settings
+    switch(current_month_of_year) {
+        case 10:
+            mystery_box_open_sound = "sounds/modes/festive/halloween/mbox_open.wav";
+            game_modifier_hellhound_fog_color = "200 525 60 45 25";
+            game_modifier_default_fog_color = "240 2000 0 0 0";
+            game_modifiers.interface.rounds.color = '200 60 0';
+            festive_override_music = "festive/dtha";
+            break;
+    }
+
+    // Spawn the ambient music..
+    entity ambience = spawn();
+    ambience.noise2 = "sounds/music/tune1.wav";
+    entity old_self = self;
+    self = ambience;
+    ambient_bgm();
+    self = old_self;
+};
+
+void() Gamemode_Festive_AmmoCrateTouch =
+{
+    if (other.classname != "player" || other.downed)
+		return;
+
+    float ammo_cost = 500;
+
+    switch(other.weapons[0].weapon_tier) {
+        case 1:
+            ammo_cost = 1000;
+            break;
+        case 2:
+            ammo_cost = 2500;
+            break;
+        case 3:
+            ammo_cost = 5000;
+            break;
+        default: 
+            break;
+    }
+
+    if (EqualNonPapWeapon(other.weapon) == W_RAY || EqualNonPapWeapon(other.weapon) == W_TESLA || EqualNonPapWeapon(other.weapon) == W_RAYMK2)
+        ammo_cost = 10000;
+
+	other.useprint_touch = GetWeaponName(other.weapon, -1);
+
+	if (other.currentammo < getWeaponAmmo(other.weapon)) {
+		Player_UseprintWithWait(other, self, self.useprint_index_1, ammo_cost);
+
+		if (!Player_UseButtonPressed(other, self) || (other.semi_actions & SEMIACTION_USE) || other.isBuying) {
+			return;
+		}
+
+		other.semi_actions |= SEMIACTION_USE;
+
+		// Player doesn't have enough points. Abort.
+		if (other.points < ammo_cost) {
+			centerprint(other, STR_NOTENOUGHPOINTS);
+			Sound_PlaySound(other, "sounds/misc/denybuy.wav", SOUND_TYPE_ENV_CHING, SOUND_PRIORITY_PLAYALWAYS);
+			return;
+		}
+
+        other.weapons[0].weapon_magazine = getWeaponMag(other.weapon);
+		other.weapons[0].weapon_reserve = getWeaponAmmo(other.weapon);
+
+		Sound_PlaySound(other, "sounds/misc/ching.wav", SOUND_TYPE_ENV_CHING, SOUND_PRIORITY_PLAYALWAYS);
+		other.reload_delay = 0;
+
+		// Subtract the cost from player points.
+		Player_RemoveScore(other, ammo_cost);
+	}
+};
+
+void(vector crate_origin, vector crate_angles) Gamemode_Festive_SpawnAmmoCrate =
+{
+    entity ammo_crate = spawn();
+    setmodel(ammo_crate, "models/props/derped/ammo_can.mdl");
+    setsize(ammo_crate, '-32 -32 -32', '32 32 32');
+    setorigin(ammo_crate, crate_origin - '0 0 32');
+    ammo_crate.angles = crate_angles;
+    ammo_crate.scale = 2;
+    ammo_crate.touch = Gamemode_Festive_AmmoCrateTouch;
+	ammo_crate.solid = SOLID_TRIGGER;
+	ammo_crate.useprint_index_1 = festive_useprint_ammo;
+    Light_Purple(ammo_crate);
+};
+
+void() Gamemode_Festive_Frame =
+{
+    if (festive_ran_post_init_logic == false) {
+        entity barricades = find(world, classname, "window");
+        while (barricades != world) {
+            barricades.health = -10;
+            setmodel(barricades, "");
+            barricades = find(barricades, classname, "window");
+        }
+
+        entity double_tap_machines = find(world, classname, "perk_double");
+        while (double_tap_machines != world) {
+            Gamemode_Festive_SpawnAmmoCrate(double_tap_machines.origin, double_tap_machines.angles);
+            remove(double_tap_machines);
+            double_tap_machines = find(double_tap_machines, classname, "perk_double");
+        }
+
+        // Enable weapon upgrade Power-Up if Pack-A-Punch isn't present..
+        if (!modifier_weapon_upgrade_overridden && find(world, classname, "perk_pap") == world) {
+            game_modifiers.gameplay.powerups.powerup_weapon_upgrade.enabled = true;
+        }
+
+        if (festive_override_music != "") {
+            entity song_eggs = find(world, classname, "game_songplay");
+            while (song_eggs != world) {
+                song_eggs.aistatus = festive_override_music;
+                song_eggs.cost = 240;
+                song_eggs = find(song_eggs, classname, "game_songplay");
+            }
+        }
+
+        localcmd(strcat("fog ", game_modifier_default_fog_color));
+        festive_ran_post_init_logic = true;
+    }
+};
+
+void() Gamemode_Festive_PlayerSpawn =
+{
+    self.has_bowie_knife = true;
+    self.has_doubletap_damage_buff = false;
+    nzp_setdoubletapver(self, false);
+
+    // Give the player a random starting weapon
+    float weapon_chance = random();
+    float selected_weapon = W_COLT;
+
+    if (weapon_chance < (1.0 / 6.0))
+        selected_weapon = W_GEWEHR;
+    else if (weapon_chance < (1.0 / 5.0))
+        selected_weapon = W_MP40;
+    else if (weapon_chance < (1.0 / 4.0))
+        selected_weapon = W_SAWNOFF;
+    else if (weapon_chance < (1.0 / 3.0))
+        selected_weapon = W_M1A1;
+    else if (weapon_chance < (1.0 / 2.0))
+        selected_weapon = W_KAR;
+
+    Weapon_AssignWeapon(0, selected_weapon, 0, 0, 0);
+};
+
+float(float current_melee_damage, float weapon, float has_bowie) Gamemode_Festive_CalculateMeleeDamage =
+{
+    // Hard coded because we always have the Bowie Knife.
+    return 715;
+};
+
+float(float current_count, float current_round, float round_type, float current_player_count) Gamemode_Festive_GetZombieTotalForRound =
+{
+    float zombie_count = 0;
+    
+    // Leave Hellhounds alone..
+    if (round_type == 2)
+        return current_count;
+
+    // As far as I can tell these are hard coded? No real algo here..
+    if (current_round <= 5) {
+        switch(current_round) {
+            case 1:
+                switch(current_player_count) {
+                    case 1: return 6;
+                    case 2: return 8;
+                    case 3: return 11;
+                    case 4: return 14;
+                    case 5: return 18;
+                    case 6: return 24;
+                    case 7: return 28;
+                    default: return 32;
+                }
+            case 2:
+                switch(current_player_count) {
+                    case 1: return 9;
+                    case 2: return 11;
+                    case 3: return 14;
+                    case 4: return 18;
+                    case 5: return 22;
+                    case 6: return 26;
+                    case 7: return 30;
+                    default: return 35;
+                }
+            case 3:
+                switch(current_player_count) {
+                    case 1: return 13;
+                    case 2: return 15;
+                    case 3: return 20;
+                    case 4: return 25;
+                    case 5: return 30;
+                    case 6: return 35;
+                    case 7: return 40;
+                    default: return 45;
+                }
+            case 4:
+                switch(current_player_count) {
+                    case 1: return 18;
+                    case 2: return 20;
+                    case 3: return 25;
+                    case 4: return 33;
+                    case 5: return 39;
+                    case 6: return 46;
+                    case 7: return 53;
+                    default: return 60;
+                }
+            default:
+                switch(current_player_count) {
+                    case 1: return 24;
+                    case 2: return 25;
+                    case 3: return 32;
+                    case 4: return 42;
+                    case 5: return 52;
+                    case 6: return 59;
+                    case 7: return 62;
+                    default: return 68;
+                }
+        }
+    } else {
+        // .. This is programmatic, me thinks!
+        // Start with a base of 24 like normal algorithm..
+        float base_count = 24;
+
+        // Cold War seems to cap at Round 29 for solo, and 
+        // Round 20 for Co-Op..
+        float ai_round_cap = 0;
+        float player_weight = 0;
+        float algo_magic = 0.5;
+        
+        if (current_player_count == 1) {
+            ai_round_cap = 29;
+            player_weight = 0.84;
+        } else {
+            ai_round_cap = 20;
+            player_weight = 0.6;
+            algo_magic += (current_player_count / 2);
+        }
+
+        float multiplier = 1;
+
+        if (current_round < ai_round_cap) {
+            player_weight *= 0.84; // ..?
+            multiplier = clamp(current_round / 5, 0, 1);
+            multiplier *= current_round * player_weight;
+        } else {
+            multiplier = current_round * player_weight;
+        }
+
+        zombie_count = rint(algo_magic * 6 * multiplier);
+    }
+
+    return zombie_count;
+}
+
+float(float current_health, float current_round) Gamemode_Festive_GetZombieHealthForRound =
+{
+    float zombie_health = 150;
+
+    if (current_round > 2 && current_round < 13) {
+        zombie_health += current_round * 60;
+    } else if (current_round < 18) {
+        zombie_health += current_round * 100;
+    } else if (current_round < 23) {
+        zombie_health += current_round * 300;
+    } else if (current_round < 28) {
+        zombie_health += current_round * 750;
+    } else if (current_round < 33) {
+        zombie_health += current_round * 1400;
+    } else if (current_round < 37) {
+        zombie_health += current_round * 1750;
+    } else if (current_round < 56) {
+        zombie_health += current_round * 2000;
+    } else {
+        zombie_health = 60250;
+    }
+    return zombie_health;
+}
+
+float(entity client, float current_price) Gamemode_Festive_GetPerkMachinePrice =
+{
+    return 2500 + (Player_GetNumPerks(other) * 500);
+}
+
+float(float current_multiplier, float current_perks, float weapon, float location) Gamemode_Festive_GetWeaponLimbMultiplier =
+{
+    // Dampen damage outside of headshots.
+    if (location != HEAD_X) {
+        return current_multiplier *= 0.75;
+    }
+
+    return current_multiplier;
+}
+
+float(float damage, float weapon_id, float weapon_tier) Gamemode_Festive_GetWeaponDamage =
+{
+    // Buff the Colt M1911 a tiny bit
+    if (weapon_id == W_COLT)
+        damage = 60;
+    else
+        damage *= 0.65;
+
+    // Blue Rarity + Tier I Equivalent
+    if (weapon_tier == 1)
+        return damage * 2;
+
+    // Purple Rarity + Tier II Equivalent
+    else if (weapon_tier == 2)
+        return damage * 6;
+
+    // Gold Rarity + Tier III Equivalent
+    else if (weapon_tier == 3)
+        return damage * 16;
+
+    return damage;
+}
+
+float(float current_cost, float weapon_cost, float weapon_id, float is_upgraded, float weapon_tier) Gamemode_Festive_GetCostForWeaponAmmo =
+{
+    if (EqualNonPapWeapon(weapon_id) == W_RAY || EqualNonPapWeapon(weapon_id) == W_TESLA || EqualNonPapWeapon(weapon_id) == W_RAYMK2)
+        return 10000;
+
+    if (is_upgraded) {
+        switch(weapon_tier) {
+            case 1:
+                return 5000;
+            case 2:
+                return 15000;
+            case 3:
+                return 30000;
+        }
+    }
+
+    return current_cost;
+}
+
+float(float weapon, float ammo) Gamemode_Festive_GetWeaponAmmo =
+{
+    return rint(ammo * 1.5);
+};
+
+float(float current_dist, string ai_classname) Gamemode_Festive_GetAIWalkSpeed =
+{
+    return current_dist * 1.25;
+}
+
+string(string current_tune) Gamemode_Festive_GetSplashTune =
+{
+    return "sounds/modes/festive/rnd_splash.wav";
+}
+
+string(string current_tune) Gamemode_Festive_GetStartRoundTune =
+{
+    return "sounds/modes/festive/rnd_start.wav";
+}
+
+string(string current_tune) Gamemode_Festive_GetEndRoundTune =
+{
+    return "sounds/modes/festive/rnd_end.wav";
+}
+
+string(string current_tune) Gamemode_Festive_GetStartSpecialRoundTune =
+{
+    return "sounds/modes/festive/rnd_dog_start.wav";
+}
+
+string(string current_tune) Gamemode_Festive_GetEndSpecialRoundTune =
+{
+    return "sounds/modes/festive/rnd_dog_end.wav";
+}
+
+float(float current_delay) Gamemode_Festive_GetRoundDelay =
+{
+    return time + 4.5;
+}
+
+string(string taunt) Gamemode_Festive_GetGoodByeTaunt =
+{
+    return "sounds/modes/festive/byebye.wav";
+}

@@ -1,0 +1,1 @@
+for t in /proc/26280/task/*; do read -r pid comm rest < $t/stat; echo $pid ${comm} ; done

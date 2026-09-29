@@ -1,0 +1,19 @@
+# ─────────────────────────────────────────────────────────────
+# graphify: qué NO indexar en este proyecto
+# ─────────────────────────────────────────────────────────────
+# Datos de juego (binarios: .bsp, .dat, .wav, .png, .lmp...)
+# No son código: indexarlos solo añade ruido y tarda mucho.
+game/
+nightly/
+
+# Salidas propias de graphify (evita recursión)
+**/graphify-out/
+
+# Toolchain / temporales
+.msys2/
+*.log
+*.tmp
+
+# Git interno de los repos clonados (el .git de la raíz sí se usa)
+vril-engine/.git/
+quakec/.git/

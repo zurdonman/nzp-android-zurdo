@@ -1,0 +1,308 @@
+#---------------------------------------------------------------------------------
+.SUFFIXES:
+#---------------------------------------------------------------------------------
+
+ifeq ($(strip $(DEVKITARM)),)
+$(error "Please set DEVKITARM in your environment. export DEVKITARM=<path to>devkitARM")
+endif
+
+TOPDIR ?= $(CURDIR)
+include $(DEVKITARM)/3ds_rules
+
+TARGET		:=	nzportable
+BUILD		:=	build/ctr
+SOURCES		:=	source source/qcvm source/tests
+#DATA		:=	data
+INCLUDES	:=	include
+ICON		:= 	source/platform/ctr/art/icon.png
+#ROMFS		:=	romfs 
+
+APP_AUTHOR 		:= NZ:P Team
+APP_TITLE 		:= Nazi Zombies: Portable
+APP_DESCRIPTION := Call of Duty Zombies remake
+
+#---------------------------------------------------------------------------------
+# options for code generation
+#---------------------------------------------------------------------------------
+ARCH	:=	-march=armv6k -mtune=mpcore -mfloat-abi=hard -mtp=soft
+
+CFLAGS	:=	-g -Wall -Wdouble-promotion -std=gnu99 -O3 -mword-relocations \
+			-fomit-frame-pointer -ffunction-sections \
+			$(ARCH)
+
+CFLAGS	+=	$(INCLUDE) -DARM11 -D__3DS__ -DGLQUAKE -DPLATFORM_DIRECTORY="ctr" \
+			-DPLATFORM_RENDERER="gl" -DMAX_AI_COUNT=18 -DPLATFORM_CONFIRM_FLIPPED \
+			-DPLATFORM_KEYBOARD_SYSTEM -DPLATFORM_HAS_ONE_ANALOG_STICK -DPLATFORM_SUPPORTS_GYRO \
+			-DPLATFORM_SUPPORTS_LIGHTBAR
+
+ifeq ($(WERROR),1)
+CFLAGS 		+= -Werror
+endif
+
+ifeq ($(FANALYZER),1)
+CFLAGS		+= -fanalyzer
+endif
+
+CXXFLAGS	:= $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++11
+
+ASFLAGS	:=	-g $(ARCH)
+LDFLAGS	=	-specs=3dsx.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
+
+LIBS	:=  -lpicaGL -lmpg123 -lm -lctru
+
+#---------------------------------------------------------------------------------
+# list of directories containing libraries, this must be the top level containing
+# include and lib
+#---------------------------------------------------------------------------------
+LIBDIRS	:= $(CTRULIB) $(DEVKITPRO)/picaGL $(PORTLIBS)
+
+
+#---------------------------------------------------------------------------------
+# no real need to edit anything past this point unless you need to add additional
+# rules for different file extensions
+#---------------------------------------------------------------------------------
+ifneq ($(notdir $(BUILD)),$(notdir $(CURDIR)))
+#---------------------------------------------------------------------------------
+
+export OUTPUT	:=	$(CURDIR)/$(BUILD)/bin/$(TARGET)
+export TOPDIR	:=	$(CURDIR)
+
+export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir))
+
+export DEPSDIR	:=	$(CURDIR)/$(BUILD)
+
+COMMON_OBJS =	system.o \
+				startup.c \
+				test_handler.c \
+				test_map_boot.c \
+				test_restart.c \
+				test_qcvm.c \
+				chase.c \
+				render/r_hud.c \
+				cl_demo.c \
+				cl_input.c \
+				cl_main.c \
+				cl_parse.c \
+				cl_tent.c \
+				cl_slist.c \
+				platform/ctr/bsp_strlcpy.c \
+				cmd.c \
+				platform/ctr/common.c \
+				console.c \
+				platform/ctr/circle_pad_pro.c \
+				crc.c \
+				cvar.c \
+				host.c \
+				host_cmd.c \
+				keys.c \
+				mathlib.c \
+				matrixlib.c \
+				menu/menu_sys.c \
+				menu/menu.c \
+				menu/menu_custommaps.c \
+				menu/menu_helper.c \
+				menu/menu_main.c \
+				menu/menu_stockmaps.c \
+				menu/menu_lobby.c \
+				menu/menu_gamesettings.c \
+				menu/menu_configuration.c \
+				menu/menu_video.c \
+				menu/menu_audio.c \
+				menu/menu_controls.c \
+				menu/menu_bindings.c \
+				menu/menu_accessibility.c \
+				menu/menu_pause.c \
+				menu/menu_loadscreen.c \
+				menu/menu_bios.c \
+				menu/menu_credits.c \
+				platform/ctr/net_dgrm.c \
+				platform/ctr/net_udpctr.c \
+				net_loop.c \
+				platform/ctr/net_bsd.c \
+				platform/ctr/net_main.c \
+				net_vcr.c \
+				pr_cmds.c \
+				pr_json.c \
+				cJSON.c \
+				pr_edict.c \
+				pr_exec.c \
+				sv_main.c \
+				sv_move.c \
+				sv_phys.c \
+				sv_user.c \
+				view.c \
+				wad.c \
+				world.c \
+				zone.c \
+				platform/ctr/sys_ctr.c \
+				snd_dma.c \
+				snd_mix.c \
+				snd_mem.c \
+				images.c \
+				platform/ctr/snd_ctr.c \
+				input.c \
+				platform/ctr/in_ctr.c \
+				platform/ctr/music.c \
+				snd_music.c \
+				render/r_particles.c \
+				platform/ctr/gl/gl_hyena.c \
+				render/r_decals.c \
+				platform/ctr/gl/gl_draw.c \
+				render/r_fog.c \
+				platform/ctr/gl/gl_mesh.c \
+				platform/ctr/gl/gl_model.c \
+				render/r_entity_fragments.c \
+				render/r_light.c \
+				render/r_mdl.c \
+				render/r_surface.c \
+				platform/ctr/gl/gl_rmain.c \
+				platform/ctr/gl/gl_rmisc.c \
+				platform/ctr/gl/gl_rsurf.c \
+				render/r_screen.c \
+				platform/ctr/gl/gl_warp.c \
+				platform/ctr/gl/gl_vidctr.c \
+				platform/ctr/touch_ctr.c \
+				crypter.c
+
+CFILES		:=	$(COMMON_OBJS)
+CPPFILES	:=	
+SFILES		:=	
+PICAFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.v.pica)))
+SHLISTFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.shlist)))
+#BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*)))
+
+#---------------------------------------------------------------------------------
+# use CXX for linking C++ projects, CC for standard C
+#---------------------------------------------------------------------------------
+ifeq ($(strip $(CPPFILES)),)
+#---------------------------------------------------------------------------------
+	export LD	:=	$(CC)
+#---------------------------------------------------------------------------------
+else
+#---------------------------------------------------------------------------------
+	export LD	:=	$(CXX)
+#---------------------------------------------------------------------------------
+endif
+#---------------------------------------------------------------------------------
+
+export OFILES_SOURCES 	:=	$(CPPFILES:.cpp=.o) $(CFILES:.c=.o) $(SFILES:.s=.o)
+
+export OFILES_BIN	:=	$(addsuffix .o,$(BINFILES)) \
+			$(PICAFILES:.v.pica=.shbin.o) $(SHLISTFILES:.shlist=.shbin.o)
+
+export OFILES := $(OFILES_BIN) $(OFILES_SOURCES)
+
+export HFILES	:=	$(PICAFILES:.v.pica=_shbin.h) $(SHLISTFILES:.shlist=_shbin.h) $(addsuffix .h,$(subst .,_,$(BINFILES)))
+
+export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
+			$(foreach dir,$(LIBDIRS),-I$(dir)/include) \
+			-I$(CURDIR)/$(BUILD)
+
+export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L$(dir)/lib)
+
+ifeq ($(strip $(ICON)),)
+	icons := $(wildcard *.png)
+	ifneq (,$(findstring $(TARGET).png,$(icons)))
+		export APP_ICON := $(TOPDIR)/$(TARGET).png
+	else
+		ifneq (,$(findstring icon.png,$(icons)))
+			export APP_ICON := $(TOPDIR)/icon.png
+		endif
+	endif
+else
+	export APP_ICON := $(TOPDIR)/$(ICON)
+endif
+
+ifeq ($(strip $(NO_SMDH)),)
+	export _3DSXFLAGS += --smdh=$(OUTPUT).smdh
+endif
+
+ifneq ($(ROMFS),)
+	export _3DSXFLAGS += --romfs=$(CURDIR)/$(ROMFS)
+endif
+
+.PHONY: $(BUILD) clean all
+
+#---------------------------------------------------------------------------------
+all: _build_info.h $(BUILD)
+
+_build_info.h:
+	rm -rf $(CURDIR)/source/_build_info.h
+	echo "#define GIT_HASH \"$(shell git rev-parse --short HEAD)$(shell git diff --quiet || echo -dirty)\"" > $(CURDIR)/source/_build_info.h
+	echo "#define GIT_BRANCH \"$(shell git rev-parse --abbrev-ref HEAD)\"" >> $(CURDIR)/source/_build_info.h
+	echo "#define BUILD_DATE \"$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")\"" >> $(CURDIR)/source/_build_info.h
+
+$(BUILD):
+	@[ -d $@ ] || mkdir -p $@
+	@mkdir -p $(BUILD)/platform/ctr
+	@mkdir -p $(BUILD)/platform/ctr/gl
+	@mkdir -p $(BUILD)/render
+	@mkdir -p $(BUILD)/menu
+	@mkdir -p $(BUILD)/bin
+	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile.ctr
+
+#---------------------------------------------------------------------------------
+clean:
+	@echo clean ...
+	@rm -fr $(CURDIR)/source/_build_info.h
+	@rm -fr $(BUILD)
+
+
+#---------------------------------------------------------------------------------
+else
+
+DEPENDS	:=	$(OFILES:.o=.d)
+
+#---------------------------------------------------------------------------------
+# main targets
+#---------------------------------------------------------------------------------
+ifeq ($(strip $(NO_SMDH)),)
+$(OUTPUT).3dsx	:	$(OUTPUT).elf $(OUTPUT).smdh
+else
+$(OUTPUT).3dsx	:	$(OUTPUT).elf
+endif
+
+$(OFILES_SOURCES) : $(HFILES)
+
+$(OUTPUT).elf	:	$(OFILES)
+
+#---------------------------------------------------------------------------------
+# you need a rule like this for each extension you use as binary data
+#---------------------------------------------------------------------------------
+%.bin.o	%_bin.h :	%.bin
+#---------------------------------------------------------------------------------
+	@echo $(notdir $<)
+	@$(bin2o)
+
+#---------------------------------------------------------------------------------
+# rules for assembling GPU shaders
+#---------------------------------------------------------------------------------
+define shader-as
+	$(eval CURBIN := $*.shbin)
+	$(eval DEPSFILE := $(DEPSDIR)/$*.shbin.d)
+	echo "$(CURBIN).o: $< $1" > $(DEPSFILE)
+	echo "extern const u8" `(echo $(CURBIN) | sed -e 's/^\([0-9]\)/_\1/' | tr . _)`"_end[];" > `(echo $(CURBIN) | tr . _)`.h
+	echo "extern const u8" `(echo $(CURBIN) | sed -e 's/^\([0-9]\)/_\1/' | tr . _)`"[];" >> `(echo $(CURBIN) | tr . _)`.h
+	echo "extern const u32" `(echo $(CURBIN) | sed -e 's/^\([0-9]\)/_\1/' | tr . _)`_size";" >> `(echo $(CURBIN) | tr . _)`.h
+	picasso -o $(CURBIN) $1
+	bin2s $(CURBIN) | $(AS) -o $*.shbin.o
+endef
+
+%.shbin.o %_shbin.h : %.v.pica %.g.pica
+	@echo $(notdir $^)
+	@$(call shader-as,$^)
+
+%.shbin.o %_shbin.h : %.v.pica
+	@echo $(notdir $<)
+	@$(call shader-as,$<)
+
+%.shbin.o %_shbin.h : %.shlist
+	@echo $(notdir $<)
+	@$(call shader-as,$(foreach file,$(shell cat $<),$(dir $<)$(file)))
+
+
+-include $(DEPENDS)
+
+#---------------------------------------------------------------------------------------
+endif
+#---------------------------------------------------------------------------------------

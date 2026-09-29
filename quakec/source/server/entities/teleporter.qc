@@ -1,0 +1,443 @@
+/*
+	server/entities/teleporter.qc
+
+	all logic for teleporters of every form.
+
+	Copyright (C) 2021-2024 NZ:P Team
+
+	This program is free software; you can redistribute it and/or
+	modify it under the terms of the GNU General Public License
+	as published by the Free Software Foundation; either version 2
+	of the License, or (at your option) any later version.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+	See the GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program; if not, write to:
+
+		Free Software Foundation, Inc.
+		59 Temple Place - Suite 330
+		Boston, MA  02111-1307, USA
+*/
+
+/* 
+   ============
+    Teleporter
+   ============ 
+
+	Teleporters have 3 different modes
+
+	0: Default Patch 1.0.4 Mode
+		- Interact with teleporter and go to pad (credit: Naievil and PerikiyoXD)
+
+	1: Linked Mode
+		- One-Time-Link teleporter with pad, teleport to pad
+
+	2: Timed Mode
+		- Link teleporter with pad, teleport to other destination
+		  for a set amount of time, then return to pad. Link every time.
+   
+   TODO:
+		- Sounds
+		- Keep track of whether player is touching instead of locking movement
+*/
+
+void(vector where, float time_alive) SpawnSpark;
+
+vector(float slot) Teleporter_PlayerOffset =
+{
+	switch(slot) {
+		case 0:
+			return '20 20 0';
+		case 1:
+			return '-20 20 0';
+		case 2:
+			return '20 -20 0';
+		case 3:
+			return '-20 -20 0';
+	}
+
+	return '0 0 0';
+}
+
+void() teleporter_cooldown =
+{
+	self.activated = false;
+
+	if (self.mode == 2) {
+		self.isLinked = false;
+	}
+
+	self.cooldown = false;
+}
+
+void() start_cooldown =
+{
+	self.cooldown = true;
+	self.think = teleporter_cooldown;
+	self.nextthink = time + 5;
+}
+
+void() teleport_entities_back =
+{
+	entity en, player;
+	vector destination;
+	en = find(world, targetname, self.target2);
+
+    SUB_UseTargets();
+    self.iszomb = 0;
+
+	Sound_PlaySound(self.entities[0], "sounds/machines/elec_shock.wav", SOUND_TYPE_ENV_OBJECT, SOUND_PRIORITY_PLAYALWAYS);
+
+    for(float i = 0; i < 4; i++) {
+        if (self.entities[i].classname == "player") {
+            player = self.entities[i];
+
+			destination = en.origin + Teleporter_PlayerOffset(self.iszomb);
+			if (self.isTimed || en.classname == "func_teleporter_pad")
+				destination += '0 0 40';
+
+			// setorigin relinks the player's collision bounds at the spaced position.
+			setorigin(player, destination);
+
+            player.fire_delay = player.fire_delay2 = 
+            player.reload_delay = player.reload_delay2 =
+            2.0 + time;
+			player.speed_penalty = 0.75;
+			player.speed_penalty_time = time + 2;
+
+            player.zoom = 0;
+            player.movetype = MOVETYPE_WALK;
+			player.oldz = player.origin_z;
+			player.flags = player.flags & FL_ONGROUND;
+			player.velocity = '0 0 0';
+
+            if (self.mode == 0)
+                self.activated = false;
+            
+            self.iszomb++;
+        }
+    }
+
+	SpawnSpark(en.origin + '0 0 32', 1);
+
+    self.iszomb = 0;
+    start_cooldown();
+    self.isTimed = false;
+}
+
+void(entity who) teleport_entity =
+{
+	entity en;
+	vector destination;
+	en = find(world, targetname, self.target2);
+  
+  
+    SUB_UseTargets ();
+        
+	destination = who.tele_target.origin + Teleporter_PlayerOffset(self.iszomb);
+	if (self.isTimed || en.classname == "func_teleporter_pad")
+		destination += '0 0 40';
+
+	// Apply the final position through setorigin so each player is relinked apart.
+	setorigin(who, destination);
+
+	// Prohibit taking fall damage
+	who.oldz = who.origin_z;
+
+    who.fire_delay = who.fire_delay2 = who.reload_delay = who.reload_delay2 = 2.0 + time;
+	who.speed_penalty = 0.75;
+	who.speed_penalty_time = time + 2;
+    who.zoom = 0;
+	who.movetype = MOVETYPE_WALK;
+    who.flags = who.flags & FL_ONGROUND;
+	who.velocity = '0 0 0';
+}
+
+void() teleport_entities =
+{
+    // Store all of the players
+    entity people = findradius(self.origin, self.stance);
+    float i = 0;
+
+    self.entities[0] = world;
+    self.entities[1] = world;
+    self.entities[2] = world;
+    self.entities[3] = world;
+
+    while(people != world) {
+        if (people.classname == "player") {
+            self.entities[i] = people;
+            i++;
+            teleport_entity(people);
+            self.iszomb++;
+        }
+        people = people.chain;
+    }
+    self.iszomb = 0;
+
+    if (self.mode == 0) {
+		self.activated = false;
+	} else if (self.mode == 2 && !self.isTimed) {
+		self.nextthink = time + self.tpTimer;
+		self.think = teleport_entities_back;
+		self.isTimed = true;
+	} else {
+		start_cooldown();
+		self.isTimed = false;
+	}
+}
+
+void() teleport_pad_touch =
+{
+	if (other.classname != "player" || self.host.isLinked)
+		return;
+
+	if (!isPowerOn) {
+		Player_UseprintWithWait(other, self, self.useprint_index_2, 0);
+    	return;
+    } 
+
+	if (self.host.waitLink) {
+		Player_UseprintWithWait(other, self, self.useprint_index_1, 0);
+
+		if (Player_UseButtonPressed(other, self)) {
+			self.host.isLinked = true;
+			self.host.waitLink = false;
+			Sound_PlaySound(self, "sounds/weapons/tesla/switchon.wav", SOUND_TYPE_ENV_OBJECT, SOUND_PRIORITY_PLAYALWAYS);
+		}
+	} else {
+		if (self.host.mode == 2) {
+			Player_UseprintWithWait(other, self, self.useprint_index_3, 0);
+		}
+	}
+}
+
+void() teleporter_link_touch =
+{
+
+	if (!self.waitLink)
+		Player_UseprintWithWait(other, self, self.useprint_index_4, 0);
+
+	if (Player_UseButtonPressed(other, self)) {
+		local entity en;
+
+		en = find(world, targetname, self.target2);
+		Sound_PlaySound(self, "sounds/weapons/tesla/switchoff.wav", SOUND_TYPE_ENV_OBJECT, SOUND_PRIORITY_PLAYALWAYS);
+		self.waitLink = true;
+		en.host = self;
+	}
+}
+
+void() teleport_touch =
+{
+	entity tempe;
+
+	if (self.cooldown) {
+		Player_UseprintWithWait(other, self, self.useprint_index_3, 0);
+		return;
+	}
+
+  	if (other.classname != "player" || self.activated)
+		return;
+  
+  	if (!isPowerOn) {
+		Player_UseprintWithWait(other, self, self.useprint_index_2, 0);
+    	return;
+    } 
+
+	if (self.mode != 0 && !self.isLinked) {
+		teleporter_link_touch();
+		return;
+	}
+
+	float teleporter_cost = floor(self.cost * game_modifiers.gameplay.global.all_items_cost_multiplier);
+    
+	if (!self.cost)
+		Player_UseprintWithWait(other, self, self.useprint_index_1, 0);
+	else
+		Player_UseprintWithWait(other, self, self.useprint_index_1, teleporter_cost);
+	
+
+	if (Player_UseButtonPressed(other, self) && !(other.semi_actions & SEMIACTION_USE)) {
+		other.semi_actions |= SEMIACTION_USE;
+		
+		if (other.points < teleporter_cost) {
+			centerprint(other, STR_NOTENOUGHPOINTS);
+			Sound_PlaySound(other, "sounds/misc/denybuy.wav", SOUND_TYPE_ENV_CHING, SOUND_PRIORITY_PLAYALWAYS);
+			return;
+		}
+
+		Player_RemoveScore(other, teleporter_cost);
+
+		SUB_UseTargets();
+
+		self.activated = true;
+
+        entity people = findradius(self.origin, self.stance);
+        while (people != world) {
+            if (people.classname == "player") {
+                people.tele_target = find(world, targetname, self.target);
+                people.movetype = MOVETYPE_NONE;
+            }
+			else if (people.classname == "ai_dog" && !people.electro_targeted) {
+				Sound_PlaySound(self, "sounds/machines/elec_shock.wav", SOUND_TYPE_ENV_OBJECT, SOUND_PRIORITY_PLAYALWAYS);
+
+				tempe = self;
+				self = people;
+				self.electro_targeted = true;
+				self.th_die();
+				self = tempe;
+			}
+			else if (people.aistatus == "1" && !people.electro_targeted) 
+			{
+				tempe = self;
+				self = people;
+				Z_ElectroShock();
+				self = tempe;	
+			}
+			people = people.chain;
+        }
+
+        if (!other.tele_target)
+			objerror("Couldn't find target!");
+
+		self.think = teleport_entities;
+		self.nextthink = time + 1;
+		SpawnSpark(self.origin + '0 0 32', 1.5);
+		Sound_PlaySound(self, "sounds/machines/elec_shock.wav", SOUND_TYPE_ENV_OBJECT, SOUND_PRIORITY_PLAYALWAYS);
+	}
+
+	if (other.button1) {
+    	if (self.targetname != "") {
+      		if (self.nextthink < time)
+        		return;		// not fired yet
+      	}
+    }
+}
+
+void() teleport_use =
+{
+	self.nextthink = time + 2;
+	force_retouch = 2;		// make sure even still objects get hit
+	self.think = SUB_Null;
+}
+
+//
+// func_teleporter_entrance()
+// Spawn function for the main teleporter.
+//
+void() func_teleporter_entrance =
+{		
+    //
+	// Set Default Stats for Compatibility
+	//
+    
+    // Model
+    if (!self.model) {
+        self.model = "models/props/teleporter.mdl";
+    }
+
+    // Radius
+    if (!self.stance) {
+        self.stance = 75;
+    }
+
+	if (!self.useprint_string_1) 
+		self.useprint_string_1 = "Hold %b to use Teleporter";
+
+	if (!self.useprint_string_2) 
+		self.useprint_string_2 = "The Power must be Activated first";
+
+	if (!self.useprint_string_3) 
+		self.useprint_string_3 = "Teleporter is cooling down";
+
+	if (!self.useprint_string_4) 
+		self.useprint_string_4 = "Hold %b to initate link to pad";
+
+    precache_model(self.model);
+	precache_model("models/sprites/lightning.spr");
+	precache_sound("sounds/machines/elec_shock.wav");
+	precache_sound("sounds/weapons/tesla/switchoff.wav");
+	
+	self.movetype = MOVETYPE_NONE;
+	self.solid = SOLID_TRIGGER;
+	self.classname = "func_teleporter_entrance";
+	self.useprint_index_1 = Useprint_Register(self.useprint_string_1, self.useprint_color_1);
+	self.useprint_index_2 = Useprint_Register(self.useprint_string_2, self.useprint_color_2);
+	self.useprint_index_3 = Useprint_Register(self.useprint_string_3, self.useprint_color_3);
+	self.useprint_index_4 = Useprint_Register(self.useprint_string_4, self.useprint_color_4);
+  	setmodel(self, self.model);
+  	setsize(self, VEC_HULL2_MIN, VEC_HULL2_MAX);
+	
+    self.touch = teleport_touch;
+
+    // Verify the User has teleporter targets set.
+    if (!self.target)
+		objerror("No target!");
+
+	if (self.mode != 0) {
+		if (!self.target2)
+			objerror("No mainframe!");
+
+		if (self.mode == 2) {
+			entity tempe;
+			tempe = find(world, targetname, self.target2);
+			tempe.host = self;
+		}
+	}
+
+    self.use = teleport_use;
+}
+
+//
+// func_teleporter_destination()
+// Empty Entity to use as a destination for standard
+// teleporter modes.
+//
+void() func_teleporter_destination =
+{
+	// this does nothing, just serves as a target spot
+	self.origin = self.origin + '0 0 40';
+	self.classname = "func_teleporter_destination";
+}
+
+//
+// func_teleporter_timed()
+// Empty Entity to use as a destination for time-based
+// teleporter modes.
+//
+void() func_teleporter_timed =
+{
+	self.origin = self.origin + '0 0 40';
+	self.classname = "func_teleporter_timed";
+}
+
+//
+// func_teleporter_pad()
+// Teleporter Pad that's often used as a Link Point
+// or Return Point.
+//
+void() func_teleporter_pad =
+{
+	if (!self.useprint_string_1) self.useprint_string_1 = "Hold %b to link pad with core";
+	if (!self.useprint_string_2) self.useprint_string_2 = "The Power must be Activated first";
+	if (!self.useprint_string_3) self.useprint_string_3 = "Link not active";
+	self.useprint_index_1 = Useprint_Register(self.useprint_string_1, self.useprint_color_1);
+	self.useprint_index_2 = Useprint_Register(self.useprint_string_2, self.useprint_color_2);
+	self.useprint_index_3 = Useprint_Register(self.useprint_string_3, self.useprint_color_3);
+	precache_model ("models/props/mainframe_pad.mdl");
+	precache_sound("sounds/weapons/tesla/switchon.wav");
+	
+	self.movetype = MOVETYPE_NONE;
+	self.solid = SOLID_TRIGGER;
+	self.classname = "func_teleporter_pad";
+  	setmodel(self, "models/props/mainframe_pad.mdl");
+  	setsize(self, VEC_HULL2_MIN, VEC_HULL2_MAX);
+	
+    self.touch = teleport_pad_touch;
+}

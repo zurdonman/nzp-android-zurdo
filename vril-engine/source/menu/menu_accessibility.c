@@ -1,0 +1,266 @@
+/*
+Copyright (C) 2025-2026 NZ:P Team
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  
+
+See the GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the Free Software
+Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+*/
+#include "../nzportable_def.h"
+#include "menu_defs.h"
+
+//=============================================================================
+/* ACCESSIBILITY MENU */
+
+char 			*hitmarkers_string;
+char 			*colorblind_string;
+char 			*screenflash_string;
+char 			*monthspoof_string;
+char 			*crosshairdot_string;
+char 			*meleedive_string;
+#ifdef PLATFORM_SUPPORTS_LIGHTBAR
+static char     *lightbar_string;
+#endif
+
+extern cvar_t 	cl_hitmarkers;
+extern cvar_t 	cl_colorblind;
+extern cvar_t 	scr_whiteflash;
+extern cvar_t 	sv_spoofmonth;
+extern cvar_t 	cl_textopacity;
+extern cvar_t 	cl_crosshairdot;
+extern cvar_t 	cl_viewbob;
+extern cvar_t 	cl_meleedive;
+#ifdef PLATFORM_SUPPORTS_LIGHTBAR
+extern cvar_t in_lightbar;
+#endif
+
+void Menu_Accessibility_ApplyHitmarkers (void)
+{
+	float current_hitmarkers = cl_hitmarkers.value;
+
+    current_hitmarkers += 1;
+    if (current_hitmarkers > 1) {
+        current_hitmarkers = 0;
+    }
+
+    Cvar_SetValue ("cl_hitmarkers", current_hitmarkers);
+}
+
+void Menu_Accessibility_ApplyColorblind (void)
+{
+	float current_colorblind = cl_colorblind.value;
+
+    current_colorblind += 1;
+    if (current_colorblind > 1) {
+        current_colorblind = 0;
+    }
+
+    Cvar_SetValue ("cl_colorblind", current_colorblind);
+}
+
+void Menu_Accessibility_ApplyScreenflash (void)
+{
+	float current_screenflash = scr_whiteflash.value;
+
+    current_screenflash += 1;
+    if (current_screenflash > 1) {
+        current_screenflash = 0;
+    }
+
+    Cvar_SetValue ("scr_whiteflash", current_screenflash);
+}
+
+void Menu_Accessibility_ApplyMonthSpoof (void)
+{
+	float current_monthspoof = sv_spoofmonth.value;
+
+    current_monthspoof += 1;
+    if (current_monthspoof > 12) {
+        current_monthspoof = 0;
+    }
+
+    Cvar_SetValue ("sv_spoofmonth", current_monthspoof);
+}
+
+void Menu_Accessibility_ApplyCrosshairDot (void)
+{
+	Cvar_SetValue ("cl_crosshairdot", !cl_crosshairdot.value);
+}
+
+void Menu_Accessibility_ApplyMeleeDive (void)
+{
+	Cvar_SetValue("cl_meleedive", !cl_meleedive.value);
+}
+
+#ifdef PLATFORM_SUPPORTS_LIGHTBAR
+static void Menu_Accessibility_ApplyLightbar(void)
+{
+	Cvar_SetValue("in_lightbar", in_lightbar.value ? 0 : 1);
+}
+#endif
+
+void Menu_Accessibility_ApplySettings (void)
+{
+	// no op
+	Menu_SetSound(MENU_SND_ENTER);
+}
+
+/*
+===============
+Menu_Accessibility_Set
+===============
+*/
+void Menu_Accessibility_Set (void)
+{
+	Menu_ResetMenuButtons();
+
+	m_previous_state = m_state;
+	m_state = m_accessibility;
+}
+
+void Menu_Accessibility_SetStrings (void)
+{
+	if((int)cl_hitmarkers.value == 1) {
+		hitmarkers_string = "ENABLED";
+	} else {
+		hitmarkers_string = "DISABLED";
+	}
+
+	if((int)cl_colorblind.value == 1) {
+		colorblind_string = "ENABLED";
+	} else {
+		colorblind_string = "DISABLED";
+	}
+
+	if ((int)scr_whiteflash.value == 1) {
+		screenflash_string = "FORBID WHITE";
+	} else {
+		screenflash_string = "ALLOW WHITE";
+	}
+
+	if ((int)cl_crosshairdot.value == 1) {
+		crosshairdot_string = "ENABLED";
+	} else {
+		crosshairdot_string = "DISABLED";
+	}
+
+	meleedive_string = cl_meleedive.value ? "ENABLED" : "DISABLED";
+#ifdef PLATFORM_SUPPORTS_LIGHTBAR
+	lightbar_string = in_lightbar.value ? "ENABLED" : "DISABLED";
+#endif
+
+	switch((int)sv_spoofmonth.value) {
+		case 0:
+			monthspoof_string = "REAL TIME";
+			break;
+		case 1:
+			monthspoof_string = "JANUARY";
+			break;
+		case 2:
+			monthspoof_string = "FEBRUARY";
+			break;
+		case 3:
+			monthspoof_string = "MARCH";
+			break;
+		case 4:
+			monthspoof_string = "APRIL";
+			break;
+		case 5:
+			monthspoof_string = "MAY";
+			break;
+		case 6:
+			monthspoof_string = "JUNE";
+			break;
+		case 7:
+			monthspoof_string = "JULY";
+			break;
+		case 8:
+			monthspoof_string = "AUGUST";
+			break;
+		case 9:
+			monthspoof_string = "SEPTEMBER";
+			break;
+		case 10:
+			monthspoof_string = "OCTOBER";
+			break;
+		case 11:
+			monthspoof_string = "NOVEMBER";
+			break;
+		case 12:
+			monthspoof_string = "DECEMBER";
+			break;
+	}
+}
+
+/*
+===============
+Menu_Accessibility_Draw
+===============
+*/
+void Menu_Accessibility_Draw (void)
+{
+	// Background
+	Menu_DrawCustomBackground (true);
+	// Header
+	Menu_DrawTitle ("ACCESSIBILITY OPTIONS", MENU_COLOR_WHITE);
+	// Map panel makes the background darker
+    Menu_DrawMapPanel();
+    // Set value strings
+    Menu_Accessibility_SetStrings();
+
+	// Hitmarkers
+	Menu_DrawButton(1, 0, "HITMARKERS", "HUD Hitmarkers for visual feedback.", Menu_Accessibility_ApplyHitmarkers);
+	Menu_DrawOptionButton(1, hitmarkers_string);
+
+	// Text Backdrop
+	Menu_DrawButton(2, 1, "TEXT BACKDROP", "Opacity of backdrop for text elements on HUD.", NULL);
+	Menu_DrawOptionSlider(2, 1, 0, 1, cl_textopacity, "cl_textopacity", false, false, 0.05f);
+
+	// Accessible Colors
+	Menu_DrawButton(3, 2, "ACCESSIBLE COLORS", "Uses enhanced Player colors to improve visibilty.", Menu_Accessibility_ApplyColorblind);
+	Menu_DrawOptionButton(3, colorblind_string);
+
+	// Screen Flashes
+	Menu_DrawButton(4, 3, "SCREEN FLASHES", "Choose the color of screen flashes.", Menu_Accessibility_ApplyScreenflash);
+	Menu_DrawOptionButton(4, screenflash_string);
+
+	// Month Spoof
+	Menu_DrawButton(5, 4, "MONTH SPOOF", "Lie to the game about the current Month, if you are host.", Menu_Accessibility_ApplyMonthSpoof);
+	Menu_DrawOptionButton(5, monthspoof_string);
+
+	// Crosshair Dot
+	Menu_DrawButton(6, 5, "CROSSHAIR DOT", "Add a dot to the middle of the crosshair.", Menu_Accessibility_ApplyCrosshairDot);
+	Menu_DrawOptionButton(6, crosshairdot_string);
+
+	// Camera Bob
+	Menu_DrawButton(7, 6, "CAMERA BOB", "Scale for Camera Bob and Roll.", NULL);
+	Menu_DrawOptionSlider(7, 1, 0, 1, cl_viewbob, "cl_viewbob", false, false, 0.05f);
+
+	// Melee Dive Shortcut
+	Menu_DrawButton(8, 7, "SPRINT MELEE DIVE", "Dive when Melee while Sprinting.", Menu_Accessibility_ApplyMeleeDive);
+	Menu_DrawOptionButton(8, meleedive_string);
+
+#ifdef PLATFORM_SUPPORTS_LIGHTBAR
+	Menu_DrawButton(9, 8, "GAMEPAD LIGHTBAR", "Enable Light Bar feedback.", Menu_Accessibility_ApplyLightbar);
+	Menu_DrawOptionButton(9, lightbar_string);
+#endif
+
+	Menu_DrawDivider(-2.5);
+#ifdef PLATFORM_SUPPORTS_LIGHTBAR
+	Menu_DrawButton(-2, 9, "APPLY", "Save & Apply Settings.", Menu_Accessibility_ApplySettings);
+	Menu_DrawButton(-1, 10, "BACK", "Return to Configuration Menu.", Menu_Configuration_Set);
+#else
+	Menu_DrawButton(-2, 8, "APPLY", "Save & Apply Settings.", Menu_Accessibility_ApplySettings);
+	Menu_DrawButton(-1, 9, "BACK", "Return to Configuration Menu.", Menu_Configuration_Set);
+#endif
+}

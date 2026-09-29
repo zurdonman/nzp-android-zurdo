@@ -1,0 +1,194 @@
+TARGET		:= nzportable
+TITLE		:= NZZMBSPTB
+BUILD		:= build/psp2
+ELF			:= $(BUILD)/$(TARGET).elf
+VELF		:= $(BUILD)/$(TARGET).velf
+VPK			:= $(BUILD)/$(TARGET).vpk
+EBOOT		:= $(BUILD)/eboot.bin
+PARAM_SFO	:= $(BUILD)/param.sfo
+GIT_VERSION := $(shell git describe --abbrev=6 --dirty --always --tags)
+
+LIBS = -lvitaGL -lvitashark -lSceShaccCgExt -ltaihen_stub -lvorbisfile -lvorbis -logg \
+	-lspeexdsp -lmpg123 -lScePspnetAdhoc_stub -lSceShaccCg_stub -lSceKernelDmacMgr_stub \
+	-lc -lSceCommonDialog_stub -lSceAudio_stub -lSceLibKernel_stub -lmathneon \
+	-lSceNet_stub -lSceNetCtl_stub -lpng -lSceDisplay_stub -lSceGxm_stub \
+	-Wl,--whole-archive -lSceSysmodule_stub -Wl,--no-whole-archive \
+	-lSceCtrl_stub -lSceTouch_stub -lSceMotion_stub -lm -lSceAppMgr_stub \
+	-lSceAppUtil_stub -lScePgf_stub -ljpeg -lSceRtc_stub -lScePower_stub -lcurl -lssl -lcrypto -lz -lzstd
+
+COMMON_OBJS =	\
+	source/system.o \
+	source/tests/test_handler.o \
+	source/tests/test_map_boot.o \
+	source/tests/test_restart.o \
+	source/tests/test_qcvm.o \
+	source/chase.o \
+	source/cl_demo.o \
+	source/cl_input.o \
+	source/cl_main.o \
+	source/cl_parse.o \
+	source/cl_tent.o \
+	source/cl_slist.o \
+    source/cmd.o \
+	source/platform/psp2/common.o \
+	source/menu/menu_sys.o \
+	source/menu/menu.o \
+	source/menu/menu_custommaps.o \
+	source/menu/menu_helper.o \
+	source/menu/menu_main.o \
+	source/menu/menu_stockmaps.o \
+	source/menu/menu_lobby.o \
+	source/menu/menu_gamesettings.o \
+	source/menu/menu_configuration.o \
+	source/menu/menu_video.o \
+	source/menu/menu_audio.o \
+	source/menu/menu_controls.o \
+	source/menu/menu_bindings.o \
+	source/menu/menu_accessibility.o \
+	source/menu/menu_pause.o \
+	source/menu/menu_loadscreen.o \
+	source/menu/menu_bios.o \
+	source/menu/menu_credits.o \
+	source/console.o \
+	source/crc.o \
+	source/cvar.o \
+	source/host.o \
+	source/host_cmd.o \
+	source/keys.o \
+	source/mathlib.o \
+	source/matrixlib.o \
+	source/platform/psp2/net_dgrm.o \
+	source/net_loop.o \
+	source/platform/psp2/net_main.o \
+	source/net_vcr.o \
+	source/qcvm/pr_cmds.o \
+	source/qcvm/pr_json.o \
+	source/qcvm/cJSON.o \
+	source/qcvm/pr_edict.o \
+	source/qcvm/pr_exec.o \
+	source/snd_dma.o \
+	source/snd_mem.o \
+	source/snd_mix.o \
+	source/render/r_hud.o \
+	source/sv_main.o \
+	source/sv_move.o \
+	source/sv_phys.o \
+	source/sv_user.o \
+	source/view.o \
+	source/wad.o \
+	source/world.o \
+	source/zone.o \
+	source/crypter.o \
+	source/render/r_fog.o \
+	source/render/r_entity_fragments.o \
+	source/render/r_color_quantization.o \
+	source/render/r_light.o \
+	source/render/r_mdl.o \
+	source/render/r_surface.o \
+	source/render/r_particles.o \
+	source/render/r_decals.o \
+	source/platform/psp2/gl/gl_hyena.o \
+	source/images.o \
+	source/platform/psp2/sys_psp2.o \
+	source/platform/psp2/gl/gl_draw.o \
+	source/platform/psp2/gl/gl_mesh.o \
+	source/platform/psp2/gl/gl_model.o \
+	source/platform/psp2/gl/gl_rmain.o \
+	source/platform/psp2/gl/gl_rmisc.o \
+	source/platform/psp2/gl/gl_rsurf.o \
+	source/render/r_screen.o \
+	source/platform/psp2/gl/gl_warp.o \
+	source/platform/psp2/music.o \
+	source/snd_music.o \
+	source/platform/psp2/audiodec/audio_decoder.o \
+	source/platform/psp2/audiodec/audio_resampler.o \
+	source/platform/psp2/audiodec/decoder_oggvorbis.o \
+	source/snd_dma.o \
+	source/snd_mix.o \
+	source/snd_mem.o \
+	source/platform/psp2/snd_psp2.o \
+	source/platform/psp2/net_psp2.o \
+	source/platform/psp2/net_adhoc_psp2.o \
+	source/platform/psp2/net_udp_psp2.o \
+	source/input.o \
+	source/platform/psp2/in_psp2.o \
+	source/platform/psp2/gl/gl_vidpsp2.o \
+	source/platform/psp2/neon_mathfun.o \
+	source/crypter.o
+	
+CPPSOURCES	:= source/audiodec
+
+CPPFILES := $(foreach dir,$(CPPSOURCES),$(wildcard $(dir)/*.cpp))
+OBJS := $(addprefix $(BUILD)/,$(COMMON_OBJS)) \
+	$(patsubst %.cpp,$(BUILD)/%.o,$(CPPFILES))
+
+PREFIX  = arm-vita-eabi
+CC      = $(PREFIX)-gcc
+CXX      = $(PREFIX)-g++
+CFLAGS  = -fsigned-char -Wl,-q -O3 -g -fno-optimize-sibling-calls \
+	-ffast-math -mtune=cortex-a9 -mfpu=neon \
+	-DGLQUAKE -DHAVE_OGGVORBIS -DHAVE_MPG123 -DHAVE_LIBSPEEXDSP \
+	-DUSE_AUDIO_RESAMPLER -DHAVE_STRLCAT -DGIT_VERSION=\"$(GIT_VERSION)\" \
+	-DPLATFORM_DIRECTORY="psp2" -DPLATFORM_RENDERER="gl" -DMAX_AI_COUNT=24 \
+	-DENABLE_RAZOR_CAPTURE -D__PSP2__ -DPLATFORM_KEYBOARD_OSK \
+	-DPLATFORM_SUPPORTS_GYRO -DPLATFORM_SUPPORTS_RUMBLE -DPLATFORM_SUPPORTS_LIGHTBAR
+
+ifeq ($(WERROR),1)
+CFLAGS 		+= -Werror
+endif
+
+ifeq ($(FANALYZER),1)
+CFLAGS		+= -fanalyzer
+endif
+
+CXXFLAGS  = $(CFLAGS) -fno-exceptions -std=gnu++11 \
+			-Wno-write-strings -Wno-sign-compare -Wno-strict-aliasing
+ASFLAGS = $(CFLAGS)
+
+.PHONY: all clean
+all: _build_info.h $(VPK)
+
+_build_info.h:
+	rm -rf $(CURDIR)/source/_build_info.h
+	echo "#define GIT_HASH \"$(shell git rev-parse --short HEAD)$(shell git diff --quiet || echo -dirty)\"" > $(CURDIR)/source/_build_info.h
+	echo "#define GIT_BRANCH \"$(shell git rev-parse --abbrev-ref HEAD)\"" >> $(CURDIR)/source/_build_info.h
+	echo "#define BUILD_DATE \"$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")\"" >> $(CURDIR)/source/_build_info.h
+
+
+$(VPK): $(VELF)
+	vita-make-fself -c -s $< $(EBOOT)
+	vita-mksfoex -s TITLE_ID=$(TITLE) -d ATTRIBUTE2=12 "Nazi Zombies: Portable" $(PARAM_SFO)
+	vita-pack-vpk -s $(PARAM_SFO) -b $(EBOOT) $@ \
+	--add $(EBOOT)=nzp.bin \
+	--add source/platform/psp2/art/sce_sys/icon0.png=sce_sys/icon0.png \
+	--add source/platform/psp2/art/sce_sys/livearea/contents/bg.png=sce_sys/livearea/contents/bg.png \
+	--add source/platform/psp2/art/sce_sys/livearea/contents/startup.png=sce_sys/livearea/contents/startup.png \
+	--add source/platform/psp2/art/sce_sys/livearea/contents/template.xml=sce_sys/livearea/contents/template.xml
+
+%_f.h:
+	@mkdir -p $(BUILD)/$(@D)
+	psp2cgc -profile sce_fp_psp2 $(@:_f.h=_f.cg) -Wperf -fastprecision -O3 -o $(BUILD)/$(@:_f.h=_f.gxp)
+	
+%_v.h:
+	@mkdir -p $(BUILD)/$(@D)
+	psp2cgc -profile sce_vp_psp2 $(@:_v.h=_v.cg) -Wperf -fastprecision -O3 -o $(BUILD)/$(@:_v.h=_v.gxp)
+	
+$(VELF): $(ELF)
+	cp $< $(BUILD)/$(TARGET).unstripped.elf
+	$(PREFIX)-strip -g $<
+	vita-elf-create $< $@
+
+$(ELF): $(OBJS)
+	@mkdir -p $(@D)
+	$(CXX) $(GCCFLAGS) $(CXXFLAGS) $^ $(LIBS) -o $@
+
+$(BUILD)/%.o: %.c _build_info.h
+	@mkdir -p $(@D)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD)/%.o: %.cpp _build_info.h
+	@mkdir -p $(@D)
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+clean:
+	@rm -rf $(BUILD)

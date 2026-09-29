@@ -1,0 +1,281 @@
+/*
+	server/tests/test_perksacola.qc
+
+	Perk-A-Cola unit tests.
+
+	Copyright (C) 2021-2025 NZ:P Team
+
+	This program is free software; you can redistribute it and/or
+	modify it under the terms of the GNU General Public License
+	as published by the Free Software Foundation; either version 2
+	of the License, or (at your option) any later version.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+	See the GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program; if not, write to:
+
+		Free Software Foundation, Inc.
+		59 Temple Place - Suite 330
+		Boston, MA  02111-1307, USA
+
+*/
+float(float condition, string message) Test_Assert;
+void(string message) Test_Skip;
+void(entity object) Test_SimulateUse;
+
+// MARK: Quick Revive
+
+//
+// Test_Perks_QuickRevive_ValidatePrice()
+// Spawns a Quick Revive machine and validates its
+// default fields.
+//
+void() Test_Perks_QuickRevive_ValidateFields =
+{
+    entity machine = spawn();
+    entity old_self = self;
+    self = machine;
+
+    perk_revive();
+
+    Test_Assert((self.model == PERK_QUICKREVIVE_DEFAULT_MODEL), "Perk has incorrect model!");
+    Test_Assert((self.cost == 500), "Perk has incorrect Solo cost!");
+	Test_Assert((self.cost2 == 1500), "Perk has incorrect Co-Op cost!");
+	Test_Assert((self.name == "Quick Revive"), "Quick Revive has incorrect name!");
+
+    self = old_self;
+    remove(machine);
+};
+
+void() Test_Perks_NameOverridePreserved =
+{
+	entity machine = spawn();
+	entity old_self = self;
+	float old_lock = useprint_registration_locked;
+	useprint_registration_locked = false;
+	self = machine;
+	self.name = "Custom Name";
+
+	perk_revive();
+
+	Test_Assert((self.name == "Custom Name"), "Perk spawn replaced a mapper-defined name!");
+
+	self = old_self;
+	useprint_registration_locked = old_lock;
+	remove(machine);
+};
+
+// MARK: Jugger-Nog
+
+//
+// Test_Perks_JuggerNog_ValidatePrice()
+// Spawns a Jugger-Nog machine and validates its
+// default fields.
+//
+void() Test_Perks_JuggerNog_ValidateFields =
+{
+    entity machine = spawn();
+    entity old_self = self;
+    self = machine;
+
+    perk_juggernog();
+
+    Test_Assert((self.model == PERK_JUGGERNOG_DEFAULT_MODEL), "Perk has incorrect model!");
+    Test_Assert((self.cost == 2500), "Perk has incorrect Solo cost!");
+	Test_Assert((self.cost2 == 2500), "Perk has incorrect Co-Op cost!");
+	Test_Assert((self.name == "Jugger-Nog"), "Jugger-Nog has incorrect name!");
+
+    self = old_self;
+    remove(machine);
+};
+
+// MARK: Speed Cola
+
+//
+// Test_Perks_SpeedCola_ValidatePrice()
+// Spawns a Speed Cola machine and validates its
+// default fields.
+//
+void() Test_Perks_SpeedCola_ValidateFields =
+{
+    entity machine = spawn();
+    entity old_self = self;
+    self = machine;
+
+    perk_speed();
+
+    Test_Assert((self.model == PERK_SPEEDCOLA_DEFAULT_MODEL), "Perk has incorrect model!");
+    Test_Assert((self.cost == 3000), "Perk has incorrect Solo cost!");
+	Test_Assert((self.cost2 == 3000), "Perk has incorrect Co-Op cost!");
+	Test_Assert((self.name == "Speed Cola"), "Speed Cola has incorrect name!");
+
+    self = old_self;
+    remove(machine);
+};
+
+// MARK: Double Tap
+
+//
+// Test_Perks_DoubleTap_ValidateFields()
+// Spawns a Double Tap machine and validates its
+// default fields.
+//
+void() Test_Perks_DoubleTap_ValidateFields =
+{
+    entity machine = spawn();
+    entity old_self = self;
+    self = machine;
+
+    perk_double();
+
+    Test_Assert((self.model == PERK_DOUBLETAP_DEFAULT_MODEL), "Perk has incorrect model!");
+    Test_Assert((self.cost == 2000), "Perk has incorrect Solo cost!");
+	Test_Assert((self.cost2 == 2000), "Perk has incorrect Co-Op cost!");
+	Test_Assert((self.name == "Double Tap Root Beer"), "Double Tap has incorrect name!");
+
+    self = old_self;
+    remove(machine);
+};
+
+// MARK: Stamin-Up
+
+//
+// Test_Perks_StaminUp_ValidateFields()
+// Spawns a Stamin-Up machine and validates its
+// default fields.
+//
+void() Test_Perks_StaminUp_ValidateFields =
+{
+    entity machine = spawn();
+    entity old_self = self;
+    self = machine;
+
+    perk_staminup();
+
+    Test_Assert((self.model == PERK_STAMINUP_DEFAULT_MODEL), "Perk has incorrect model!");
+    Test_Assert((self.cost == 2000), "Perk has incorrect Solo cost!");
+	Test_Assert((self.cost2 == 2000), "Perk has incorrect Co-Op cost!");
+	Test_Assert((self.name == "Stamin-Up"), "Stamin-Up has incorrect name!");
+
+    self = old_self;
+    remove(machine);
+};
+
+// MARK: PhD Flopper
+
+//
+// Test_Perks_PhDFlopper_ValidateFields()
+// Spawns a PhD Flopper machine and validates its
+// default fields.
+//
+void() Test_Perks_PhDFlopper_ValidateFields =
+{
+    entity machine = spawn();
+    entity old_self = self;
+    self = machine;
+
+    perk_flopper();
+
+    Test_Assert((self.model == PERK_PHDFLOPPER_DEFAULT_MODEL), "Perk has incorrect model!");
+    Test_Assert((self.cost == 2000), "Perk has incorrect Solo cost!");
+	Test_Assert((self.cost2 == 2000), "Perk has incorrect Co-Op cost!");
+	Test_Assert((self.name == "PhD Flopper"), "PhD Flopper has incorrect name!");
+
+    self = old_self;
+    remove(machine);
+};
+
+// MARK: Deadshot Daiquiri
+
+//
+// Test_Perks_DeadshotDaiquiri_ValidateFields()
+// Spawns a Deadshot Daiquiri machine and validates its
+// default fields.
+//
+void() Test_Perks_DeadshotDaiquiri_ValidateFields =
+{
+    entity machine = spawn();
+    entity old_self = self;
+    self = machine;
+
+    perk_deadshot();
+
+    Test_Assert((self.model == PERK_DEADSHOT_DEFAULT_MODEL), "Perk has incorrect model!");
+    Test_Assert((self.cost == 1500), "Perk has incorrect Solo cost!");
+	Test_Assert((self.cost2 == 1500), "Perk has incorrect Co-Op cost!");
+	Test_Assert((self.name == "Deadshot Daiquiri"), "Deadshot has incorrect name!");
+
+    self = old_self;
+    remove(machine);
+};
+
+// MARK: Mule Kick
+
+//
+// Test_Perks_MuleKick_ValidateFields()
+// Spawns a Deadshot Daiquiri machine and validates its
+// default fields.
+//
+void() Test_Perks_MuleKick_ValidateFields =
+{
+    entity machine = spawn();
+    entity old_self = self;
+    self = machine;
+
+    perk_mule();
+
+    Test_Assert((self.model == PERK_MULEKICK_DEFAULT_MODEL), "Perk has incorrect model!");
+    Test_Assert((self.cost == 4000), "Perk has incorrect Solo cost!");
+	Test_Assert((self.cost2 == 4000), "Perk has incorrect Co-Op cost!");
+	Test_Assert((self.name == "Mule Kick"), "Mule Kick has incorrect name!");
+
+    self = old_self;
+    remove(machine);
+};
+
+// MARK: Random Perk
+
+//
+// Test_Perks_Random_LegacyFields()
+// Attempts to spawn a random Perk-A-Cola
+// with the perk_random fields using
+// legacy data.
+// (https://github.com/nzp-team/nzportable/issues/664)
+//
+void() Test_Perks_Random_LegacyFields =
+{
+    entity random = spawn();
+    entity old_self = self;
+    self = random;
+    self.spawnflags = 240;
+    perk_random();
+    self = old_self;
+
+    remove(random);
+};
+
+// MARK: Misc.
+
+//
+// Test_Perks_ReloadWhileBuyingPerk_Blocked()
+// Asserts that triggering a reload while isBuying is true
+// does not overwrite animation or softlock isBuying state.
+// (https://github.com/nzp-team/nzportable/issues/1437)
+//
+void() Test_Perks_ReloadWhileBuyingPerk_Blocked =
+{
+    self.isBuying = true;
+    self.weapons[0].weapon_magazine = 3;
+
+    W_Reload(S_BOTH);
+
+    Test_Assert((self.isBuying == true), "isBuying state was modified by W_Reload!");
+    Test_Assert((self.weapons[0].weapon_magazine == 3), "Reload animation started while isBuying was true!");
+
+    self.isBuying = false;
+};

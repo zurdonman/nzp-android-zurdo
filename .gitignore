@@ -1,0 +1,33 @@
+# ==== Artefactos de build Android ====
+android-app/app/build/
+android-app/app/libs/
+android-app/.gradle/
+android-app/build/
+vril-engine/source/platform/android/obj/
+vril-engine/source/platform/android/libs/
+vril-engine/build/
+
+# ==== Datos de juego de escritorio (no necesarios en el repo) ====
+game/
+nightly/
+
+# ==== Analisis/graphify y capturas locales ====
+graphify-out/
+shots/
+testing/
+
+# ==== Logs y diagnosticos locales ====
+*.log
+crash-*.txt
+crash-*.log
+android-debug-log.txt
+logcat_full.txt
+diag_install_analysis.txt
+threads.txt
+injector.cpp
+
+# ==== Sistema ====
+Thumbs.db
+.DS_Store
+*.tmp
+gh_token.txt
