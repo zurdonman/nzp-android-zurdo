@@ -1,6 +1,6 @@
 # Nazi Zombies: Portable — Android Port (zurdo)
 
-Port **no oficial de la comunidad** de [Nazi Zombies: Portable](https://github.com/NZPortable/nzportable) a **Android (arm64)**, con controles táctiles adaptados para jugador zurdo, stick izquierdo completo, sprint y botón de cuchillo.
+Port **no oficial de la comunidad** de [Nazi Zombies: Portable](https://github.com/nzp-team/nzportable) a **Android (arm64)**, con controles táctiles adaptados para jugador zurdo, stick izquierdo completo, sprint y botón de cuchillo.
 
 > 🥽 **Próximamente: soporte para Meta Quest 3** — el motor (Vril, fork de Quake) ya compila para arm64 y el roadmap de VR está en marcha.
 
@@ -8,7 +8,7 @@ Port **no oficial de la comunidad** de [Nazi Zombies: Portable](https://github.c
 
 ## ⚠️ Aviso
 
-Este proyecto es un **fork** del original [NZ:P (`nzportable`)](https://github.com/NZPortable/nzportable), respetando su licencia **GPL-2.0**. Todo el mérito del juego, assets y diseño original es de la comunidad NZ:P. Este repositorio solo añade:
+Este proyecto es un **fork** del original [NZ:P (`nzportable`)](https://github.com/nzp-team/nzportable), respetando su licencia **GPL-2.0**. Todo el mérito del juego, assets y diseño original es de la comunidad NZ:P. Este repositorio solo añade:
 
 - Build nativo para Android vía **ndk-build + Gradle** (libmain.so + SDL2 2.32.10 + SDL2_mixer 2.8.2)
 - Controles táctiles rediseñados (10 botones configurables, posiciones para zurdos)

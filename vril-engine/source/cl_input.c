@@ -280,6 +280,28 @@ cvar_t	cl_anglespeedkey = {"cl_anglespeedkey","1.5"};
 
 cvar_t	in_mlook = {"in_mlook", "1", true}; //Heffo - mlook cvar
 cvar_t	in_aimassist = {"in_aimassist", "1", true};
+cvar_t	in_triggerbot = {"in_triggerbot", "0", true};
+
+// Triggerbot: auto-disparo al tener la mira sobre un enemigo (via facingenemy,
+// que el QC calcula con traceline cada 0.05s). Solo dispara con vida y cargador.
+static qboolean NZP_TriggerbotShouldFire(void)
+{
+	if (!in_triggerbot.value)
+		return false;
+	if (IN_GetActiveDevice() == IN_DEVICE_GAMEPAD)
+		return false;
+	if (!sv_player || !sv_player->v.facingenemy)
+		return false;
+	if (cl.stats[STAT_HEALTH] <= 0)
+		return false;
+	if (cl.stats[STAT_CURRENTMAG] <= 0)
+		return false;
+	return true;
+}
+
+// Fase del tap-spam del triggerbot: alterna cada CL_SendMove mientras el
+// objetivo esta en la mira, simulando pulsaciones muy rapidas del disparo.
+static qboolean nzp_triggerbot_press = false;
 
 #ifdef __WII__
 cvar_t	ads_center = {"ads_center", "0", true};
@@ -678,6 +700,21 @@ void CL_SendMove (usercmd_t *cmd)
 	if (in_attack.state & 3 )
 		bits |= 1;
 	in_attack.state &= ~2;
+
+	// Triggerbot: dispara al poner la mira sobre un enemigo. Se expone como
+	// pulsacion de ataque hacia el QC sin tocar el input fisico del jugador.
+	// Modo auto: alternamos el bit de ataque en cada envio (tap-spam rapido)
+	// para que las armas semiautomaticas reciban una pulsacion "nueva" de
+	// forma continua; las automaticas disparan a su cadencia normal. Si el
+	// jugador mantiene FIRE fisico, su bit ya esta a 1 y no se borra nunca.
+	if (NZP_TriggerbotShouldFire())
+	{
+		nzp_triggerbot_press = !nzp_triggerbot_press;
+		if (nzp_triggerbot_press)
+			bits |= 1;
+	}
+	else
+		nzp_triggerbot_press = false;
 
 	if (in_jump.state & 3)
 		bits |= 2;
