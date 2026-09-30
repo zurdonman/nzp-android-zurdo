@@ -43,6 +43,9 @@ void Menu_Touch_Draw (void);
 #endif
 void Menu_Bindings_Draw (void);
 void Menu_Accessibility_Draw (void);
+#ifdef NZP_MENU_COOP
+void Menu_Coop_Draw (void);
+#endif
 
 menu_t			current_menu;
 menu_button_t	current_menu_buttons[MAX_MENU_BUTTONS];
@@ -271,6 +274,12 @@ void Menu_Draw (void)
 #ifdef __ANDROID__
 	case m_touch:
 		Menu_Touch_Draw ();
+		break;
+#endif
+
+#ifdef NZP_MENU_COOP
+	case m_coop:
+		Menu_Coop_Draw ();
 		break;
 #endif
 

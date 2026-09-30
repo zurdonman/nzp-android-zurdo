@@ -131,6 +131,19 @@ void Menu_LoadMap (char *selected_map)
 	if (sv.active) {
 		Cbuf_AddText ("disconnect\n");
 	}
+
+	// NZ:P Android (zurdo): en COOPERATIVE esta terminal hace de servidor
+	// listen: abre el puerto, coop=1 y hasta 4 jugadores. En SOLO se asegura
+	// coop=0/maxplayers 1 para no heredar estado de una partida anterior.
+	if (!menu_is_solo) {
+		Cbuf_AddText ("maxplayers 4\n");
+		Cbuf_AddText ("coop 1\n");
+		Cbuf_AddText ("listen 1\n");
+	} else {
+		Cbuf_AddText ("maxplayers 1\n");
+		Cbuf_AddText ("coop 0\n");
+	}
+
 	snprintf (map_command, sizeof(map_command), "map %s\n", map_loadname);
 	Cbuf_AddText (map_command);
 	LoadingScreen_Begin(map_loadname);

@@ -33,6 +33,10 @@ cvar_t  cl_truelightning = {"cl_truelightning", "1", true};
 cvar_t	cl_shownet = {"cl_shownet","0"};	// can be 0, 1, or 2
 cvar_t	cl_nolerp = {"cl_nolerp","0"};
 cvar_t	cl_lightning_zadjust = {"cl_lightning_zadjust", "0", true};
+// NZ:P Android (zurdo): multiplicador de velocidad de movimiento del jugador.
+// Se aplica en cliente tras el clamp de maxspeed y el servidor eleva su cap
+// en la misma proporcion (ver SV_ClientThink en sv_user.c).
+cvar_t	nzp_speedmult = {"nzp_speedmult", "1.0", true};
 
 cvar_t	lookspring = {"lookspring","0", true};
 cvar_t	lookstrafe = {"lookstrafe","0", true};
@@ -1060,6 +1064,14 @@ void CL_SendCmd (void)
 			cmd.sidemove *= scale;
 		}
 
+	// NZ:P Android (zurdo): multiplicador de velocidad de movimiento. Se
+	// aplica DESPUES del clamp base para que el boost no se recorte; el
+	// servidor acompaña el cap en SV_ClientThink (sv_maxspeed * mult).
+		if (nzp_speedmult.value > 1.0f) {
+			cmd.forwardmove *= nzp_speedmult.value;
+			cmd.sidemove *= nzp_speedmult.value;
+		}
+
 	// send the unreliable message
 		CL_SendMove (&cmd);
 
@@ -1146,6 +1158,8 @@ void CL_Init (void)
 	Cvar_RegisterVariable (&sensitivity);
     Cvar_RegisterVariable (&in_mlook); //Heffo - mlook cvar
 	Cvar_RegisterVariable (&in_aimassist);
+	Cvar_RegisterVariable (&in_triggerbot);
+	Cvar_RegisterVariable (&nzp_speedmult);
 	Cvar_RegisterVariable (&in_tolerance);
 	Cvar_RegisterVariable (&in_acceleration);
 	Cvar_RegisterVariable (&in_disable_analog);

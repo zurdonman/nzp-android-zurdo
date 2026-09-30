@@ -39,7 +39,8 @@ APP_CFLAGS := \
 	-DPLATFORM_SUPPORTS_VIDEO_OPTIONS \
 	-DPLATFORM_SUPPORTS_GYRO \
 	-DPLATFORM_SUPPORTS_RUMBLE \
-	-DPLATFORM_SUPPORTS_LIGHTBAR
+	-DPLATFORM_SUPPORTS_LIGHTBAR \
+	-DNZP_MENU_COOP
 
 # ---------------------------------------------------------------------------
 # SDL2_mixer: activar SOLO los decodificadores que se compilan.

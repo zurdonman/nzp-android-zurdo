@@ -69,7 +69,7 @@ void Menu_Main_Draw (void)
 
 	if (!in_submenu) {
 		Menu_DrawButton(1, 0, "SOLO", "Play Solo.", Menu_Solo);
-		Menu_DrawGreyButton(2, "COOPERATIVE");
+		Menu_DrawButton(2, 1, "COOPERATIVE", "Play with Friends over LAN.", Menu_Coop_Set);
 
 		Menu_DrawDivider(3);
 

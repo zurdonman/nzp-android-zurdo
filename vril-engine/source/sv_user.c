@@ -24,6 +24,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 edict_t	*sv_player;
 
 extern	cvar_t	sv_friction;
+extern	cvar_t	nzp_speedmult;	// NZ:P Android (zurdo): multiplicador de velocidad
 cvar_t	sv_edgefriction = {"edgefriction", "2"};
 extern	cvar_t	sv_stopspeed;
 
@@ -348,10 +349,16 @@ void SV_AirMove (void)
 
 	VectorCopy (wishvel, wishdir);
 	wishspeed = VectorNormalize(wishdir);
-	if (wishspeed > sv_maxspeed.value)
+
+	// NZ:P Android (zurdo): el cap del servidor acompana al multiplicador de
+	// velocidad del cliente (nzp_speedmult) para que el boost no se recorte aqui.
 	{
-		VectorScale (wishvel, sv_maxspeed.value/wishspeed, wishvel);
-		wishspeed = sv_maxspeed.value;
+		float sv_speedcap = sv_maxspeed.value * (nzp_speedmult.value > 1.0f ? nzp_speedmult.value : 1.0f);
+		if (wishspeed > sv_speedcap)
+		{
+			VectorScale (wishvel, sv_speedcap/wishspeed, wishvel);
+			wishspeed = sv_speedcap;
+		}
 	}
 
 	if ( sv_player->v.movetype == MOVETYPE_NOCLIP)

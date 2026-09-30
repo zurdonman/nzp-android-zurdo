@@ -23,12 +23,15 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 /* CONTROLS MENU */
 
 char			*aimassist_string;
+char			*triggerbot_string;
 char			*invert_string;
 char 			*anub_string;
 
 cvar_t			global_sensitivity;
 
 extern cvar_t 	in_aimassist;
+extern cvar_t	in_triggerbot;
+extern cvar_t	nzp_speedmult;	// NZ:P Android (zurdo): multiplicador de velocidad
 extern cvar_t	sensitivity;
 extern cvar_t	in_acceleration;
 extern cvar_t	in_tolerance;
@@ -72,6 +75,12 @@ void Menu_Controls_SetStrings (void)
 		aimassist_string = "ENABLED";
 	} else {
 		aimassist_string = "DISABLED";
+	}
+
+	if((int)in_triggerbot.value == 1) {
+		triggerbot_string = "ENABLED";
+	} else {
+		triggerbot_string = "DISABLED";
 	}
 
 	if((int)m_pitch.value > 0) {
@@ -167,6 +176,18 @@ void Menu_Controls_ApplyAimAssist (void)
     Cvar_SetValue ("in_aimassist", current_aimassist);
 }
 
+void Menu_Controls_ApplyTriggerbot (void)
+{
+    float current_triggerbot = in_triggerbot.value;
+
+    current_triggerbot += 1;
+    if (current_triggerbot > 1) {
+        current_triggerbot = 0;
+    }
+
+    Cvar_SetValue ("in_triggerbot", current_triggerbot);
+}
+
 void Menu_Controls_ApplyLookInversion (void)
 {
     float current_lookinversion = m_pitch.value;
@@ -244,6 +265,10 @@ void Menu_Controls_Draw (void)
 	Menu_DrawButton (controls_buttons++, controls_index++, "AIM ASSIST", "Toggle Assisted-Aim to Improve Targetting.", Menu_Controls_ApplyAimAssist);
 	Menu_DrawOptionButton (controls_buttons-1, aimassist_string);
 
+	// Triggerbot
+	Menu_DrawButton (controls_buttons++, controls_index++, "TRIGGERBOT", "Auto-Fire when Aiming at an Enemy.", Menu_Controls_ApplyTriggerbot);
+	Menu_DrawOptionButton (controls_buttons-1, triggerbot_string);
+
 	// Look Sensitivity
 	Menu_DrawButton (controls_buttons++, controls_index++, "LOOK SENSITIVITY", "Alter look Sensitivity.", NULL);
 	Menu_DrawOptionSlider (controls_buttons-1, controls_index-1, 0, 10, global_sensitivity, "sensitivity", false, true, 1);
@@ -255,6 +280,10 @@ void Menu_Controls_Draw (void)
 	// Look Inversion
 	Menu_DrawButton (controls_buttons++, controls_index++, "INVERT LOOK", "Invert Y-Axis Camera Input.", Menu_Controls_ApplyLookInversion);
 	Menu_DrawOptionButton (controls_buttons-1, invert_string);
+
+	// NZ:P Android (zurdo): multiplicador de velocidad de movimiento
+	Menu_DrawButton (controls_buttons++, controls_index++, "MOVE SPEED", "Movement Speed Multiplier (1x - 2.5x).", NULL);
+	Menu_DrawOptionSlider (controls_buttons-1, controls_index-1, 1.0, 2.5, nzp_speedmult, "nzp_speedmult", false, true, 0.1f);
 
 #ifdef PLATFORM_USES_GENERIC_GLYPHS
 	Menu_Controls_SetControllerGlyphString();

@@ -22,6 +22,18 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "../../nzportable_def.h"
 #include "../../net_vcr.h"
 
+#ifdef NZP_MENU_COOP
+// NZ:P Android (zurdo): callbacks del menu COOPERATIVE (menu/menu_coop.c)
+void Menu_Coop_Set (void);
+void Menu_Coop_Back (void);
+void Menu_Coop_Host (void);
+void Menu_Coop_Find (void);
+void Menu_Coop_CancelSearch (void);
+void Menu_Coop_JoinIP (void);
+void Menu_Coop_JoinSelected (void);
+void Menu_Coop_SetCoopIP_f (void);
+#endif
+
 qsocket_t	*net_activeSockets = NULL;
 qsocket_t	*net_freeSockets = NULL;
 int			net_numsockets = 0;
@@ -64,7 +76,7 @@ int unreliableMessagesSent = 0;
 int unreliableMessagesReceived = 0;
 
 cvar_t	net_messagetimeout = {"net_messagetimeout","300"};
-cvar_t	hostname = {"hostname", "UNNAMED"};
+cvar_t	hostname = {"hostname", "NZP-ANDROID"};
 
 qboolean	configRestored = false;
 cvar_t	config_com_port = {"_config_com_port", "0x3f8", true};
@@ -875,6 +887,18 @@ void NET_Init (void)
 	Cmd_AddCommand ("listen", NET_Listen_f);
 	Cmd_AddCommand ("maxplayers", MaxPlayers_f);
 	Cmd_AddCommand ("port", NET_Port_f);
+
+#ifdef NZP_MENU_COOP
+	// NZ:P Android (zurdo): comandos auxiliares del menu COOPERATIVE.
+	Cmd_AddCommand ("menu_coop", Menu_Coop_Set);
+	Cmd_AddCommand ("menu_coop_back", Menu_Coop_Back);
+	Cmd_AddCommand ("menu_coop_host", Menu_Coop_Host);
+	Cmd_AddCommand ("menu_coop_find", Menu_Coop_Find);
+	Cmd_AddCommand ("menu_coop_cancel", Menu_Coop_CancelSearch);
+	Cmd_AddCommand ("menu_coop_joinip", Menu_Coop_JoinIP);
+	Cmd_AddCommand ("menu_coop_join", Menu_Coop_JoinSelected);
+	Cmd_AddCommand ("coopip", Menu_Coop_SetCoopIP_f);
+#endif
 
 	// initialize all the drivers
 	for (net_driverlevel=0 ; net_driverlevel<net_numdrivers ; net_driverlevel++)

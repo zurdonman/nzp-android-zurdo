@@ -49,11 +49,12 @@ extern int				m_previous_state;
 #define m_bios 			23
 #define m_gyro			24
 #define m_touch			25
+#define m_coop			26
 ///////////////////////////
 ///////////////////////////
 ///////////////////////////
 
-#define MAX_MENU_BUTTONS 11
+#define MAX_MENU_BUTTONS 16
 
 // Curent menu state and buttons are stored here
 // when m_state is flipped, the respective menu "Set"
@@ -331,6 +332,14 @@ void Menu_Gyro_Set (void);
 void Menu_Touch_Set (void);
 void Menu_Bindings_Set (void);
 void Menu_Accessibility_Set (void);
+void Menu_Coop_Set (void);
+void Menu_Coop_Back (void);
+void Menu_Coop_Host (void);
+void Menu_Coop_Find (void);
+void Menu_Coop_CancelSearch (void);
+void Menu_Coop_JoinIP (void);
+void Menu_Coop_JoinSelected (void);
+void Menu_Coop_SetCoopIP_f (void);
 
 // Platform specifics
 char *LoadingScreen_ReturnTip(void);

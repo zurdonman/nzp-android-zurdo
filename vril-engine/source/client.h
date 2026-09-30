@@ -269,6 +269,7 @@ extern	float	cl_backspeed;
 extern	float	cl_sidespeed;
 
 extern	cvar_t	cl_movespeedkey;
+extern	cvar_t	nzp_speedmult;	// NZ:P Android (zurdo): multiplicador de velocidad
 
 extern	cvar_t	cl_yawspeed;
 extern	cvar_t	cl_pitchspeed;
@@ -290,6 +291,7 @@ extern	cvar_t	sensitivity;
 extern	cvar_t	in_tolerance;
 extern	cvar_t	in_acceleration;
 extern 	cvar_t 	in_aimassist;
+extern	cvar_t	in_triggerbot;
 extern	cvar_t	ads_center;
 extern	cvar_t	sniper_center;
 
