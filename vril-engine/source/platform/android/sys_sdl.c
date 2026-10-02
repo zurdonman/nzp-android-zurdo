@@ -1,6 +1,9 @@
 #include "../../nzportable_def.h"
 #include "../../menu/menu_defs.h"
 #include "sdl_local.h"
+#ifdef NZP_VR_OPENXR
+#include "vr/vr_openxr.h"
+#endif
 
 #include <errno.h>
 #if defined(_WIN32)
@@ -1281,15 +1284,33 @@ int main(int argc, char **argv)
 	 * Z_Malloc y antes de Host_Init el z_zone no existe (SIGSEGV en Z_Malloc).
 	 * El registro ocurre en NZP_TouchRegisterCvars() <- IN_PlatformInit(). */
 	Host_Init(&parms);
+#ifdef NZP_VR_OPENXR
+	/* VR: despues de Host_Init porque registra cvars (necesita la zona de
+	 * memoria ya creada). Si no hay runtime OpenXR en el dispositivo queda
+	 * desactivada y el juego sigue 2D igual. */
+	VR_Init();
+#endif
 	oldtime = Sys_FloatTime();
 	while (sdl_running) {
 		double now = Sys_FloatTime();
+#ifdef NZP_VR_OPENXR
+		/* VR: xrWaitFrame/xrBeginFrame antes de simular+renderizar, y
+		 * xrEndFrame despues. Sin capas todavia (paso 3: render estereo). */
+		qboolean vr_frame = VR_IsActive() && VR_BeginFrame();
+#endif
 		Host_Frame(now - oldtime);
+#ifdef NZP_VR_OPENXR
+		if (vr_frame)
+			VR_EndFrame();
+#endif
 		music_update();
 		oldtime = now;
 	}
 	if (host_initialized)
 		Host_Shutdown();
+#ifdef NZP_VR_OPENXR
+	VR_Shutdown();
+#endif
 	free(parms.membase);
 	Startup_FreeArguments(&startup);
 	SDL_Quit();

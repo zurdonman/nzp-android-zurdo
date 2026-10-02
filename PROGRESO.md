@@ -1,7 +1,7 @@
 # 📋 PROGRESO DEL PROYECTO — Nazi Zombies: Portable (Android + VR)
 
-**Última actualización:** 2026-09-29 (v8: sprint con stick a tope + botón CUCHILLO — VALIDADO POR USUARIO: "YASTA PARECE FUNCIONAR BIEN")  
-**Estado actual:** ✅ JUGANDO + v8 completado y validado: (1) **Sprint automático** — llevar el stick izquierdo al TOPE adelante (deflexión ≥0.97 y componente Y >0.4) envía `impulse 23`; bajar del tope (≤0.85, histéresis anti-flicker) o soltar el dedo envía `impulse 24`; al disparar o usar el cuchillo el sprint se cancela y se re-arma automáticamente al soltar (el QC hace W_SprintStop al atacar). (2) **Botón CUCHILLO (KNIFE)** — 10º botón táctil con `+knife`/`-knife` (melee = button6 en el QC vía in_knife del motor), reubicable con TOUCH OPTIONS → PLACE: KNIFE. Gyro v7.2 validado antes por el usuario ("vale ahora ha quedado bien"). Port Android **prácticamente completo**.
+**Última actualización:** 2026-10-02 (v10: **PASO 2 VR COMPLETADO Y VERIFICADO** — `vr_openxr.c` escrito, compila, enlaza con libopenxr_loader.so, APK instalada y verificada en logcat: loader OK, sin runtime en el móvil → fallo elegante, juego 2D intacto. Siguiente: probar en Meta Quest 3 con cable USB)  
+**Estado actual:** ✅ JUGANDO (v8 táctil validado) + 🥽 **FASE VR INICIADA**. El juego base (táctil, coop LAN, triggerbot, MOVE SPEED) está entregado y publicado como release v2.0.0 en GitHub. Ahora se empieza la integración VR **paso a paso** (ver plan en la sección "🥽 FASE VR" al final de este documento).
 > **Workspace:** `c:\nazizombiesportable`
 > **Usuario:** AI-driver (no programador) — el trabajo lo ejecuta el agente
 > **Documento hermano:** `ROADMAP_ANDROID_VR.md` (la hoja de ruta técnica detallada)
@@ -643,7 +643,10 @@ c:\nazizombiesportable\
 │   │   ├── obj\local\arm64-v8a\libSDL2.a  ← 10,90 MB
 │   │   └── android-project\     ← plantilla Gradle de partida para el APK
 │   └── SDL_mixer-release-2.8.2\
-├── graphify-out\                ← 🧠 índice de código (5775 nodos)
+├── third_party\                 ← 🥽 dependencias VR (clonadas 2026-10-02)
+│   ├── OpenXR-SDK\              ← Khronos OpenXR (headers + loader + loader sources)
+│   └── quakevr\                 ← mod VR de Quake (vittorioromeo) — REFERENCIA de arquitectura
+├── graphify-out\                ← 🧠 índice de código (36.768 nodos / 103.867 edges / 1.014 comunidades, 2026-10-02)
 └── vril-engine\                 ← el motor
     ├── Makefile.sdl             ← build de PC
     ├── Makefile.psp2 / .ctr / .nx / .psp / .nspire
@@ -661,3 +664,72 @@ c:\nazizombiesportable\
             ├── libs\arm64-v8a\       ← ✅ libmain.so (1,06 MB) + libSDL2.so
             └── sys_android_data.c    ← ⏳ localiza/extrae los datos del juego
 ```
+
+---
+
+## 🥽 FASE VR (iniciada 2026-10-02)
+
+### Qué se ha hecho hoy (v9)
+
+1. **Clonado en `third_party\`:**
+   - `third_party\OpenXR-SDK\` — headers + loader de Khronos (fuente: github.com/KhronosGroup/OpenXR-SDK).
+   - `third_party\quakevr\` — mod VR de Quake de vittorioromeo (REFERENCIA, no se compila).
+2. **Codegrafo actualizado** (`graphify . --update --code-only`, sin API key):
+   - 36.768 nodos / 103.867 edges / 1.014 comunidades (antes: 5.775 nodos).
+   - `graph.html` regenerado (vista agregada por comunidades, >5.000 nodos).
+   - Nota: `--cluster-only` a secas falla si hay docs pendientes; usar `--code-only` en el update.
+3. **Arquitectura de quakevr analizada** (hallazgos clave):
+   - Es QuakeSpasm + **OpenVR (SteamVR)**, NO OpenXR → hay que traducir el enfoque, no copiar código.
+   - Render: FBO por ojo + submit al compositor; el patrón es portable a OpenXR (xrWaitFrame → xrLocateViews → render 2 ojos → xrEndFrame).
+   - Input: acciones (locomotion/fire/grab/haptics) + head tracking sumado a cl.viewangles; separa viewangles (mirar) de aimangles (apuntar).
+   - Punto de enganche del render: `SCR_UpdateScreen()` desvía a `VR_UpdateScreenContent()` si `vr_enabled`.
+   - OJO: quakevr modifica el protocolo de red y el QuakeC → nosotros NO lo haremos (mantener compat).
+   - GLES 1.1 no tiene FBOs en core (necesita `GL_OES_framebuffer_object`) y no hay glBlitFramebuffer.
+
+### Plan de integración VR paso a paso (Vril + OpenXR + Android)
+
+| Paso | Qué | Estado |
+|---|---|---|
+| 0 | Clonar SDKs + indexar + analizar referencia | ✅ hecho (hoy) |
+| 1 | Compilar el **loader OpenXR** para Android (arm64) y enlazarlo en Android.mk | ✅ hecho (libopenxr_loader.so 0,72 MB en jniLibs) |
+| 2 | Módulo `vr_openxr.c` mínimo: instance/session/swapchains + xrWaitFrame/Begin/End (sin render aún, solo log de poses) | ✅ **HECHO Y VERIFICADO** (ver detalle abajo) |
+| 3 | Render estéreo: FBO por ojo (GLES + OES_framebuffer_object) → xrEndFrame; mirror opcional | ⏳ siguiente (probar antes en Quest 3) |
+| 4 | Head tracking → cl.viewangles (pitch/yaw del HMD sumado al look táctil) | ⬜ |
+| 5 | Controles: XrActions (thumbsticks, trigger, grip, haptics) mapeados a los mismos bits que el táctil | ⬜ |
+| 6 | Menú VR (opciones vr_enabled, aim mode, recenter) + pulido | ⬜ |
+
+**Decisiones de diseño (fijadas):**
+- VR como capa opcional (`vr_enabled 0/1`): el juego normal sigue funcionando igual.
+- Sin cambios en protocolo de red ni QuakeC (a diferencia de quakevr) → compat total con progs.dat actual.
+- OpenXR con loader dinámico en Android (dlopen de libxr_loader / runtime del sistema) según patrón oficial de Khronos.
+- GLES 1.1 se mantiene; el estéreo se hace con FBOs OES, no migrando a GLES3 (por ahora).
+
+### ✅ Paso 2 completado (2026-10-02) — verificado en logcat
+
+**Archivos nuevos/modificados:**
+- `vril-engine/source/platform/android/vr/vr_openxr.c` + `.h` (nuevo, ~530 líneas): ciclo OpenXR completo (loader→instance→system→session→spaces→swapchains→WaitFrame/BeginFrame/EndFrame), fallo elegante si no hay runtime.
+- `sys_sdl.c`: `VR_Init()` tras `Host_Init`, `VR_BeginFrame/VR_EndFrame` en el bucle principal, `VR_Shutdown()` al salir.
+- `Android.mk`: fuentes `vr/*.c`, includes OpenXR, `-lEGL`, módulo prebuilt `openxr_loader`.
+- `Application.mk`: `-DNZP_VR_OPENXR`.
+
+**Verificación en el móvil (logcat, PID 32764):**
+```
+nzp-vr  : xrInitializeLoaderKHR OK
+nzportable-stderr: Error [GENERAL | xrCreateInstance | OpenXR-Loader] : RuntimeManifestFile::FindManifestFiles - failed to determine active runtime file path
+nzp-vr  : FALLO xrCreateInstance(&ici, &vr_instance) -> OTHER (-51)   ← XR_ERROR_RUNTIME_UNAVAILABLE
+nzportable-stdout: ========Nazi Zombies Portable Initialized=========   ← el juego sigue OK
+```
+**Conclusión:** el loader funciona; el móvil (MIUI/MediaTek) no tiene runtime OpenXR → fallo elegante correcto, juego 2D intacto. El paso 2 solo se puede validar al 100% en un dispositivo CON runtime (Meta Quest 3 vía AppScene/Link USB).
+
+**Lecciones del build (5 fallos corregidos):**
+1. `XR_ERROR_PERMISSION_INSUFFICIENT` (no SYSTEM_PERMISSIONS) + `<jni.h>` necesario.
+2. Definir `XR_USE_PLATFORM_ANDROID` + `XR_USE_GRAPHICS_API_OPENGL_ES` ANTES de los headers OpenXR; JNI en C es `(*env)->GetJavaVM(env,&vm)`.
+3. `<jni.h>` y `<EGL/egl.h>` deben incluirse ANTES de `openxr_platform.h` (patrón hello_xr).
+4. Enlace: `-lEGL` en LDLIBS + módulo PREBUILT_SHARED_LIBRARY para el loader.
+5. El módulo prebuilt va DESPUÉS del `BUILD_SHARED_LIBRARY` de libmain (si no, ndk-build error "already defined").
+
+### Bloqueadores / riesgos VR conocidos
+
+- El móvil necesita un runtime OpenXR (Horizon OS lo trae; un móvil normal sin runtime no podrá VR → probar en el dispositivo y ver qué pasa con xrInitializeLoader).
+- GLES 1.1 + FBO OES: comprobar extensiones del GPU (Adreno/Mali) antes del paso 3.
+- Rendimiento: 2 ojos × 2441x1102 es inviable; se renderizará a resolución recomendada por el runtime (~1024-1600 px/ojo).

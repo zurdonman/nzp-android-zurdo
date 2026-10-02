@@ -108,10 +108,11 @@ CORE_SRC := \
 	$(wildcard $(VRIL_ROOT)/source/render/*.c) \
 	$(wildcard $(VRIL_ROOT)/source/tests/*.c)
 
-# ---- Plataforma Android + renderer GLQUAKE --------------------------------
+# ---- Plataforma Android + renderer GLQUAKE + VR OpenXR --------------------
 PLATFORM_SRC := \
 	$(wildcard $(PLATFORM_DIR)/*.c) \
-	$(wildcard $(PLATFORM_DIR)/gl/*.c)
+	$(wildcard $(PLATFORM_DIR)/gl/*.c) \
+	$(wildcard $(PLATFORM_DIR)/vr/*.c)
 
 LOCAL_SRC_FILES := $(CORE_SRC) $(PLATFORM_SRC)
 
@@ -119,14 +120,27 @@ LOCAL_C_INCLUDES := \
 	$(VRIL_ROOT)/source \
 	$(PLATFORM_DIR) \
 	$(PLATFORM_DIR)/gl \
+	$(PLATFORM_DIR)/vr \
+	$(NZP_ROOT)/third_party/OpenXR-SDK/include \
+	$(NZP_ROOT)/third_party/OpenXR-SDK/build-android/include \
 	$(ENGINE_BUILD) \
 	$(SDL2_ROOT)/include \
 	$(SDL_MIXER)/include
 
-LOCAL_SHARED_LIBRARIES := SDL2
+LOCAL_SHARED_LIBRARIES := SDL2 openxr_loader
 LOCAL_STATIC_LIBRARIES := SDL2_mixer
 
-# GLES 1.1 (Common profile) + audio nativo + log + headers JNI.
-LOCAL_LDLIBS := -lGLESv1_CM -lGLESv2 -lOpenSLES -llog -landroid -ldl -lm
+# GLES 1.1 (Common profile) + audio nativo + log + headers JNI + EGL (VR).
+LOCAL_LDLIBS := -lGLESv1_CM -lGLESv2 -lEGL -lOpenSLES -llog -landroid -ldl -lm
 
 include $(BUILD_SHARED_LIBRARY)
+
+# ---------------------------------------------------------------------------
+# 4) libopenxr_loader.so prebuilt (third_party/OpenXR-SDK/build-android).
+#    Se enlaza contra libmain.so (LOCAL_SHARED_LIBRARIES de arriba) y ndk-build
+#    lo copia a libs/arm64-v8a/ para que el APK lo empaquete.
+# ---------------------------------------------------------------------------
+include $(CLEAR_VARS)
+LOCAL_MODULE := openxr_loader
+LOCAL_SRC_FILES := $(NZP_ROOT)/third_party/OpenXR-SDK/build-android/src/loader/libopenxr_loader.so
+include $(PREBUILT_SHARED_LIBRARY)
