@@ -1,6 +1,6 @@
 # 📋 PROGRESO DEL PROYECTO — Nazi Zombies: Portable (Android + VR)
 
-**Última actualización:** 2026-10-02 (v10: **PASO 2 VR COMPLETADO Y VERIFICADO** — `vr_openxr.c` escrito, compila, enlaza con libopenxr_loader.so, APK instalada y verificada en logcat: loader OK, sin runtime en el móvil → fallo elegante, juego 2D intacto. Siguiente: probar en Meta Quest 3 con cable USB)  
+**Última actualización:** 2026-10-05 (v11: **PASOS 3-5 programados** — render estereo + head tracking + controles XrActions escritos; sesion OpenXR verificada en Quest 3 hasta `xrBeginSession` OK; root cause del -2 en swapchains corregido (config offscreen PBUFFER+ES3 para el pbuffer del contexto ES3 auxiliar); falta validacion final CON CASCO PUESTO porque el compositor pausa la app 2D al hacer begin de la sesion VR. Ver seccion "Pasos 3-5 en curso".)  
 **Estado actual:** ✅ JUGANDO (v8 táctil validado) + 🥽 **FASE VR INICIADA**. El juego base (táctil, coop LAN, triggerbot, MOVE SPEED) está entregado y publicado como release v2.0.0 en GitHub. Ahora se empieza la integración VR **paso a paso** (ver plan en la sección "🥽 FASE VR" al final de este documento).
 > **Workspace:** `c:\nazizombiesportable`
 > **Usuario:** AI-driver (no programador) — el trabajo lo ejecuta el agente
@@ -693,10 +693,36 @@ c:\nazizombiesportable\
 | 0 | Clonar SDKs + indexar + analizar referencia | ✅ hecho (hoy) |
 | 1 | Compilar el **loader OpenXR** para Android (arm64) y enlazarlo en Android.mk | ✅ hecho (libopenxr_loader.so 0,72 MB en jniLibs) |
 | 2 | Módulo `vr_openxr.c` mínimo: instance/session/swapchains + xrWaitFrame/Begin/End (sin render aún, solo log de poses) | ✅ **HECHO Y VERIFICADO** (ver detalle abajo) |
-| 3 | Render estéreo: FBO por ojo (GLES + OES_framebuffer_object) → xrEndFrame; mirror opcional | ⏳ siguiente (probar antes en Quest 3) |
-| 4 | Head tracking → cl.viewangles (pitch/yaw del HMD sumado al look táctil) | ⬜ |
-| 5 | Controles: XrActions (thumbsticks, trigger, grip, haptics) mapeados a los mismos bits que el táctil | ⬜ |
+| 3 | Render estéreo: FBO por ojo (GLES + OES_framebuffer_object) → xrEndFrame; mirror opcional | 🔶 código completo; swapchains pendientes de validar en casco |
+| 4 | Head tracking → cl.viewangles (pitch/yaw del HMD sumado al look táctil) | 🔶 código completo (delta de pose en VR_BeginFrame → in_sdl.c) |
+| 5 | Controles: XrActions (thumbsticks, trigger, grip, haptics) mapeados a los mismos bits que el táctil | 🔶 código completo (acciones + sticks + menú VR); requiere sesión activa |
 | 6 | Menú VR (opciones vr_enabled, aim mode, recenter) + pulido | ⬜ |
+
+### 🔶 Pasos 3-5 en curso (2026-10-05) — estado real en Quest 3
+
+**Verificado en el dispositivo (vr_log.txt):**
+- `xrCreateSession` GLES OK (fix -50: llamar `xrGetOpenGLESGraphicsRequirementsKHR` + contexto ES3 auxiliar en el binding).
+- Máquina de estados respetada: IDLE(1) → READY(2) → `xrBeginSession` estereo OK ("Sesion INICIADA").
+- Contexto ES3 auxiliar con **config offscreen propio** (id=9, PBUFFER+ES3) — el config de la ventana del juego (id=7) NO tiene PBUFFER_BIT, por eso antes fallaba `eglMakeCurrent` y los swapchains se creaban con GL 1.1 → `XR_ERROR_RUNTIME_FAILURE (-2)`.
+- Resolución por ojo detectada: 1680x1760; formato GL_RGBA8 (0x8058) preferido.
+
+**Hipótesis raíz del -2 (corregida, pendiente de validación final):**
+1. El pbuffer ES3 se creaba con el config de ventana (sin PBUFFER_BIT) → `vr_es3_surf` inválido → ES3 nunca current → swapchains desde GL 1.1 → runtime los rechaza. Fix: `eglChooseConfig` offscreen dedicado (ya loguea "Config offscreen ES3: id=9 / Pbuffer ES3 16x16 OK").
+2. Ahora `VR_CreateSwapchains` loguea `GL_VERSION`/`GL_RENDERER` bajo ES3, la lista completa de formats, limpia swapchains parciales en fallo, y reintenta con backoff (10 intentos, cada 60 frames).
+
+**Bloqueador actual (no es código):** con el casco SIN poner, `xrBeginSession` hace que el compositor VR tome el display y la app 2D se PAUSA (SDL congela el hilo principal) → el bucle del motor no llega a ejecutar el intento de swapchains. Validar requiere casco puesto + mandos encendidos. Además, tras cada reinstalación aparece el diálogo de sistema `LaunchCheckControllerRequiredDialogActivity` que SOLO se acepta dentro del casco (uiautomator/keyevents adb no lo alcanzan — el diálogo vive en el compositor VR, `mCurrentFocus=null`).
+
+**Heartbeat añadido:** cada 300 frames el motor loguea `HB frames=N estado=S running=R sc=B` en vr_log.txt — permite distinguir "loop congelado" de "swapchain falla".
+
+**Cuando el usuario pueda (procedimiento de 1 paso):**
+```powershell
+# Con Quest 3 por USB, casco puesto y mandos en mano:
+powershell -ExecutionPolicy Bypass -File c:\nazizombiesportable\scripts\run_android.ps1 -WaitSeconds 60
+# Aceptar el dialogo de mandos DENTRO del casco (una vez).
+# Luego leer el log:
+adb shell run-as com.nzpteam.nzportable cat files/vr_log.txt
+```
+Éxito = `Intento de swapchains #1` → `Swapchain ojo 0/1: N imagenes` → `FBOs ojo listos` → HMD con imagen estereo.
 
 **Decisiones de diseño (fijadas):**
 - VR como capa opcional (`vr_enabled 0/1`): el juego normal sigue funcionando igual.

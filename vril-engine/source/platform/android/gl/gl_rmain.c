@@ -21,6 +21,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "../../../nzportable_def.h"
 
+#ifdef NZP_VR_OPENXR
+#include "../vr/vr_openxr.h"
+#endif
+
 entity_t	r_worldentity;
 
 qboolean	r_cache_thrash;		// compatability
@@ -1487,6 +1491,35 @@ void MYgluPerspective( GLdouble fovy, GLdouble aspect,
 
 /*
 =============
+VR_SetupEyeProjection
+
+Paso 3: proyeccion del ojo actual. Sustituye el gluPerspective simetrico del
+motor por un glFrustum asimetrico construido con los 4 angulos de fov que
+OpenXR da por ojo (angleLeft/Right/Up/Down, radianes positivos). La matriz
+modelview ya la dejo R_SetupGL (rama VR).
+=============
+*/
+#ifdef NZP_VR_OPENXR
+static void VR_SetupEyeProjection (void)
+{
+	int ew, eh;
+	float l, r, u, d;
+	float tan_l, tan_r, tan_u, tan_d;
+
+	VR_GetEyeSize(&ew, &eh);
+	VR_GetEyeFov(&l, &r, &u, &d);
+
+	tan_l = tanf(l);	tan_r = tanf(r);
+	tan_d = tanf(d);	tan_u = tanf(u);
+
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glFrustumf(-tan_l, tan_r, -tan_d, tan_u, 4.0f, 4096.0f);
+}
+#endif
+
+/*
+=============
 R_SetupGL
 =============
 */
@@ -1495,6 +1528,36 @@ void R_SetupGL (void)
 	float	screenaspect;
 	extern	int glwidth, glheight;
 	int		x, x2, y2, y, w, h;
+
+#ifdef NZP_VR_OPENXR
+	if (VR_IsRendering()) {
+		/* VR (paso 3): el destino ya es el FBO del ojo completo (VR_BeginEye
+		 * fijo viewport y proyeccion). Aqui solo reafirmamos el viewport del
+		 * ojo; la proyeccion la pone VR_SetupEyeProjection desde R_RenderView
+		 * (despues de R_Clear, antes de R_RenderScene). */
+		int ew, eh;
+		VR_GetEyeSize(&ew, &eh);
+		glViewport(0, 0, ew, eh);
+		glCullFace(GL_FRONT);
+		glMatrixMode(GL_MODELVIEW);
+		glLoadIdentity();
+		glRotatef (-90,  1, 0, 0);	// put Z going up
+		glRotatef (90,  0, 0, 1);	// put Z going up
+		glRotatef (-r_refdef.viewangles[2],  1, 0, 0);
+		glRotatef (-r_refdef.viewangles[0],  0, 1, 0);
+		glRotatef (-r_refdef.viewangles[1],  0, 0, 1);
+		glTranslatef (-r_refdef.vieworg[0],  -r_refdef.vieworg[1],  -r_refdef.vieworg[2]);
+		glGetFloatv (GL_MODELVIEW_MATRIX, r_world_matrix);
+		if (gl_cull.value)
+			glEnable(GL_CULL_FACE);
+		else
+			glDisable(GL_CULL_FACE);
+		glDisable(GL_BLEND);
+		glEnable(GL_DEPTH_TEST);
+		glDepthMask(GL_TRUE);
+		return;
+	}
+#endif
 
 	//
 	// set up viewpoint
@@ -1604,6 +1667,22 @@ void R_Clear (void)
 	qboolean clear_color = gl_clear.value;
 	extern char skybox_name[32];
 	extern qboolean sky_is_layered;
+
+#ifdef NZP_VR_OPENXR
+	if (VR_IsRendering()) {
+		/* VR: el depth buffer es compartido por las imagenes del ojo; hay que
+		 * limpiarlo SIEMPRE (gl_ztrick alterna depthmin/max y dejaria basura
+		 * entre ojos/frames). El color lo pinta R_RenderView (cielo o r_skycolor). */
+		int r = 64, g = 64, b = 70;
+		sscanf(r_skycolor.string, "%d %d %d", &r, &g, &b);
+		glClearColor(bound(0, r, 255) / 255.0f, bound(0, g, 255) / 255.0f, bound(0, b, 255) / 255.0f, 1);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		gldepthmin = 0;
+		gldepthmax = 1;
+		glDepthFunc(GL_LEQUAL);
+		return;
+	}
+#endif
 
 	if (!skybox_name[0] && !sky_is_layered)
 	{
@@ -1755,6 +1834,11 @@ void R_RenderView (void)
 
 	if (gl_finish.value)
 		glFinish ();
+
+#ifdef NZP_VR_OPENXR
+	if (VR_IsRendering())
+		VR_SetupEyeProjection();	// proyeccion del ojo ANTES de dibujar
+#endif
 
 	R_Clear ();
 

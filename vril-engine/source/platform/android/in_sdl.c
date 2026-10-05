@@ -1,6 +1,10 @@
 #include "../../nzportable_def.h"
 #include "sdl_local.h"
 
+#ifdef NZP_VR_OPENXR
+#include "vr/vr_openxr.h"
+#endif
+
 extern int mouse_dx;
 extern int mouse_dy;
 void NZP_TouchConsumeLook(int *dx, int *dy);
@@ -32,6 +36,34 @@ void IN_PlatformMouseMove(usercmd_t *cmd)
 
 	V_StopPitchDrift();
 
+#ifdef NZP_VR_OPENXR
+	/* Paso 4: head tracking. El giro de la cabeza (delta entre frames) rota
+	 * la vista del jugador; el cuerpo sigue a la cabeza. El pitch se limita
+	 * como el resto de entradas. */
+	if (VR_IsActive()) {
+		float dyaw, dpitch;
+		VR_GetHeadDelta(&dyaw, &dpitch);
+		if (dyaw || dpitch) {
+			cl.viewangles[YAW] += dyaw;
+			cl.viewangles[PITCH] += dpitch;
+			if (cl.viewangles[PITCH] > 80) cl.viewangles[PITCH] = 80;
+			if (cl.viewangles[PITCH] < -70) cl.viewangles[PITCH] = -70;
+		}
+		/* Paso 5: stick derecho gira la vista (vr_turn_speed grados/segundo
+		 * a tope de stick, escalado por host_frametime). */
+		{
+			float lx, ly;
+			VR_GetLookStick(&lx, &ly);
+			if (lx || ly) {
+				cl.viewangles[YAW] -= lx * vr_turn_speed.value * (float)host_frametime;
+				cl.viewangles[PITCH] += ly * vr_turn_speed.value * (float)host_frametime;
+				if (cl.viewangles[PITCH] > 80) cl.viewangles[PITCH] = 80;
+				if (cl.viewangles[PITCH] < -70) cl.viewangles[PITCH] = -70;
+			}
+		}
+	}
+#endif
+
 	/* mirada tactil: arrastre 1:1, medio arrastre de pantalla = ~90 grados.
 	 * forward[2] = -sin(pitch) => pitch POSITIVO mira ABAJO. Dedo hacia abajo
 	 * (dy>0) => pitch positivo => mirar abajo, como se espera en un FPS movil.
@@ -62,6 +94,18 @@ static void NZP_TouchApplyMove(usercmd_t *cmd)
 	float mx, my;
 
 	NZP_TouchGetMove(&mx, &my);
+#ifdef NZP_VR_OPENXR
+	/* Paso 5: stick izquierdo de los mandos Quest. Se suma al tactil (el
+	 * que tenga valor manda; el otro aporta 0). */
+	if (VR_IsActive()) {
+		float vx, vy;
+		VR_GetMoveStick(&vx, &vy);
+		if (vx || vy) {
+			mx = vx;
+			my = vy;
+		}
+	}
+#endif
 	if ((mx == 0.0f && my == 0.0f) || !sv_player)
 		return;
 	cmd->sidemove += sv_player->v.maxspeed * 0.8f * mx;

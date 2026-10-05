@@ -1,5 +1,8 @@
 #include "../../../nzportable_def.h"
 #include "../sdl_local.h"
+#ifdef NZP_VR_OPENXR
+#include "../vr/vr_openxr.h"
+#endif
 
 SDL_Window *sdl_window;
 SDL_GLContext sdl_gl_context;
@@ -97,6 +100,13 @@ void GL_EndRendering(void)
 		VID_SetFullscreen(fullscreen);
 	if (vsync != sdl_vsync)
 		VID_SetVSync(vsync);
+#ifdef NZP_VR_OPENXR
+	/* VR: el frame se presenta via xrEndFrame (capa de proyeccion), no con el
+	 * swap de la ventana. Ademas el panel 2D del Quest muestra el ultimo
+	 * contenido de la ventana; dejarlo en negro evita el doble render. */
+	if (VR_IsRendering())
+		return;
+#endif
 	SDL_GL_SwapWindow(sdl_window);
 }
 

@@ -22,6 +22,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "../nzportable_def.h"
 
+#ifdef NZP_VR_OPENXR
+#include "../platform/android/vr/vr_openxr.h"
+#endif
+
 /*
 
 background clear
@@ -761,10 +765,74 @@ int GetWeaponZoomAmount (void)
 float zoomin_time;
 int original_fov;
 int original_view_fov;
+
+#ifdef NZP_VR_OPENXR
+/*
+=================
+SCR_UpdateScreenVR
+
+Paso 3: render estereo. En vez de dibujar una vez a la ventana, dibuja DOS
+veces (ojo izquierdo y derecho) dentro de los FBOs de los swapchains OpenXR:
+
+  por ojo: VR_BeginEye (acquire imagen + bind FBO + viewport) ->
+           V_RenderView (mundo 3D con la proyeccion del ojo) ->
+           GL_Set2D + HUD/consola/menu (2D sobre el ojo) ->
+           VR_EndEye (unbind + release imagen)
+
+VR_EndFrame (llamado desde el bucle principal) envia las 2 imagenes al HMD
+con una XrCompositionLayerProjection. La ventana 2D no se toca.
+=================
+*/
+static void SCR_UpdateScreenVR (void)
+{
+	int eye;
+
+	for (eye = 0; eye < 2; eye++) {
+		if (!VR_BeginEye(eye))
+			continue;	// ojo no disponible este frame (sin capa = negro)
+
+		// 3D: mundo + armas. R_SetupGL usa la proyeccion/pose del ojo
+		// (vr_current_eye) cuando VR esta renderizando.
+		if (!LoadingScreen_IsWaiting()) {
+			SCR_SetUpToDrawConsole ();
+			V_RenderView ();
+		}
+
+		// 2D: HUD, consola, menu sobre cada ojo (a resolucion del ojo).
+		GL_Set2D ();
+
+		if (!LoadingScreen_IsWaiting()) {
+			SCR_DrawFPS ();
+			HUD_Draw ();
+			SCR_DrawConsole ();
+			Menu_Draw ();
+		}
+
+		if (scr_loadscreen.value)
+			Menu_DrawLoadScreen();
+
+		Draw_LoadingFill();
+
+		V_UpdatePalette ();
+
+		VR_EndEye(eye);
+	}
+}
+#endif
+
 void SCR_UpdateScreen (void)
 {
 	if (block_drawing)
 		return;
+
+#ifdef NZP_VR_OPENXR
+	/* VR activa: ruta estereo completa (los ojos se dibujan en FBOs de los
+	 * swapchains; la ventana 2D no se presenta). */
+	if (VR_IsRendering()) {
+		SCR_UpdateScreenVR();
+		return;
+	}
+#endif
 
 	vid.numpages = 2 + gl_triplebuffer.value;
 
