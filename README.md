@@ -74,6 +74,8 @@ Stick izquierdo completo con **sprint automático** al empujar hacia delante a f
 
 ## 🧠 Desarrollo asistido por IA
 
+Para el agente autónomo que trabaja desde VS Code, el documento de contexto y consejos de Arena.ai está en [`CONSEJOS_ARENA_QWEN.md`](CONSEJOS_ARENA_QWEN.md). Debe leerse antes de modificar el proyecto.
+
 Este port ha sido desarrollado mediante **ingeniería de prompts y dirección de agentes de IA**, con el ser humano actuando como *prompt engineer* y *AI driver*, y la implementación realizada por agentes como **DeepSeek V4 Flash** y **GLM 5.3 Flash**.
 
 ## 📄 Licencia
