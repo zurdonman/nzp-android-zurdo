@@ -1,21 +1,20 @@
 # 🗺️ Hoja de Ruta: Nazi Zombies: Portable → Android + VR
 
-**Fecha:** 2026-09-28
+**Fecha:** 2026-10-06 (actualizado)
 **Proyecto:** NZ:P Team — *Vril Engine* (fork mejorado del motor Quake)
-**Estado actual:** ✅ Motor compilado y **JUGABLE en Windows** (`PLAY.bat`) · ✅ Índice de código generado · ✅ Datos jugables completos · ⏳ Port Android/VR pendiente
+**Estado actual:** ✅ Motor compilado y **JUGABLE en Windows** (`PLAY.bat`) · ✅ **Port Android JUGABLE con controles táctiles** (APK `com.nzpteam.nzportable` en móvil y Quest 3) · 🔶 **VR (OpenXR en Quest 3) en fase final**: sesión FOCUSED + acciones de mandos + head tracking verificados en casco; fix raíz del crash `xrEndFrame` (swapchains post-begin) desplegado, pendiente de validación visual estéreo (swapchains/FBOs 1680x1760 por ojo)
 
 ---
 
-## 📌 Resumen ejecutivo (qué hemos averiguado, con datos reales)
+## 📌 Resumen ejecutivo (estado 2026-10-06)
 
 | Pregunta | Respuesta verificada |
 |---|---|
-| ¿Existe ya un port Android? | **No.** Solo existe la *constante* `PLATFORM_AND` usada para mostrar cadenas de texto en el menú QuakeC. **No hay** un build nativo Android. |
-| ¿Cuál es la mejor base para Android? | El backend **SDL2** (`source/platform/sdl/`). SDL2 tiene soporte oficial de Android, así que es el camino más directo. |
-| ¿Cuál es la mejor base para VR? | El mismo backend SDL2 + **OpenXR** (capa/integración), porque el render ya es OpenGL. |
-| ¿Se compila hoy en esta máquina? | **Sí.** `vril-engine/build/sdl/nzportable.exe` (3.557.000 bytes) se genera y **el juego es jugable**. |
-| ¿Dónde están los datos jugables? | **⚠️ Hallazgo clave:** el repo `nzp-team/assets` contiene solo **fuentes** (`.map`, `.way`, texturas). Los **`.bsp` compilados** y **`progs.dat`** NO están ahí → hay que sacarlos del **release `nightly`** (`nzportable-win64.zip`). |
-| ¿Cómo se lanza? | ✅ `PLAY.bat` (un clic). Compila con `BUILD.bat`. |
+| ¿Existe ya un port Android? | **SÍ, terminado.** `source/platform/android/` + SDL2 compilado `arm64-v8a` + APK Gradle. El juego arranca, menú y gameplay táctil jugables (stick virtual, look por arrastre, 10 botones, sprint). |
+| ¿Cuál es la mejor base para VR? | Confirmada: SDL2 + **OpenXR nativo in-process** (`vr_openxr.c`), GLES 1.1 + FBOs OES por ojo, swapchains ES3 compartido. `injector.cpp` (opción B) descartado: no sirve en Quest. |
+| ¿Se compila hoy en esta máquina? | **Sí.** PC: `BUILD.bat`. Android: `scripts\build_engine_android.ps1` + `scripts\build_apk.ps1` (NDK 28.2, JDK 17). |
+| ¿Dónde están los datos jugables? | `game\nzp\` (1152 archivos / 105 MB del nightly) empaquetados en `android-app/app/src/main/assets/base/nzp/` y extraídos al almacenamiento interno en el primer arranque. |
+| ¿VR funcionando en Quest 3? | **A un paso.** Verificado en casco: sesión hasta FOCUSED(5), swapchains+FBOs 1680x1760 por ojo, poses de cabeza vivas, "Acciones de mandos listas". Bloqueador histórico (SIGSEGV en `xrEndFrame` con capas) diagnosticado con evidencia forense: los swapchains deben crearse DESPUÉS de `xrBeginSession` (el compositor de Meta no registra imágenes creadas pre-begin). Fix desplegado (commit `0406088`), falta validación visual con casco. |
 
 ---
 
@@ -70,7 +69,7 @@ El motor está diseñado por *directorios de plataforma*. Cada plataforma aporta
 
 ---
 
-## 🅰️ FASE 1 — Port a Android
+## 🅰️ FASE 1 — Port a Android ✅ COMPLETADA (2026-10-02/04)
 
 ### Objetivo
 Generar un `libnzportable.so` (o `.apk`) que arranque el motor en un teléfono Android.
@@ -140,9 +139,10 @@ En Android esto se traduce en meter esos 105 MB en `assets/` del APK (o descarga
 al primer arranque, recomendado para no superar los límites del Play Store).
 
 ### 1.5 Entregable de la fase
-- [ ] `nzportable` compilado para `arm64-v8a`
-- [ ] APK instalable que arranca hasta el menú (sin assets aún OK)
-- [ ] Con assets: juego jugable con controles táctiles/gamepad
+- [x] `nzportable` compilado para `arm64-v8a` (`libmain.so` 1,06 MB vía ndk-build + `Android.mk`)
+- [x] APK instalable que arranca hasta el menú (Gradle, `android-app/`, Java 17)
+- [x] Con assets: juego jugable con controles táctiles (stick+look+10 botones+sprint+edición de layout; ver PROGRESO.md "Táctil v2")
+- [x] Bonus: coop LAN, menú COOPERATIVE, tag v2.0.0
 
 ### 1.6 ⚠️ Obstáculos ya detectados (evitar perder tiempo)
 
@@ -160,48 +160,37 @@ Las últimas líneas indican exactamente dónde murió (no buscar a ciegas en el
 
 ---
 
-## 🥽 FASE 2 — Modo VR (OpenXR)
+## 🥽 FASE 2 — Modo VR (OpenXR en Quest 3) 🔶 EN FASE FINAL
 
-### Objetivo
-Añadir soporte de visor VR al motor OpenGL existente.
+### Estado real (2026-10-06, verificado en casco)
 
-### 2.1 Decisión de arquitectura: ¿"inyección" o integración nativa?
+| Hito | Estado | Evidencia (vr_log.txt) |
+|---|---|---|
+| Loader + instance + system | ✅ | `xrInitializeLoaderKHR OK`, runtime Meta detectado |
+| Sesión GLES (ES3 auxiliar compartido) | ✅ | `xrCreateSession` OK (fix -50: `xrGetOpenGLESGraphicsRequirementsKHR` + config offscreen con PBUFFER_BIT) |
+| Máquina de estados hasta FOCUSED | ✅ | `Estado de sesion: 1→2→3→4→5` (fix clave: `xrWaitFrame` SIEMPRE con sesión iniciada — Meta solo emite SYNCHRONIZED tras el primer Wait; + `fwi.type` obligatorio) |
+| Swapchains estéreos | ✅ | `Swapchain ojo 0/1: 3 imagenes` GL_RGBA8 1680x1760 · ⚠️ deben crearse POST-begin (ver crash abajo) |
+| FBOs por imagen | ✅ | `FBOs ojo 0/1 listos (3)` |
+| Head tracking (poses vivas) | ✅ | `head pos=(…) yaw=… pitch=…` cambia al girar la cabeza |
+| Acciones mandos (XrActions) | ✅ | `Acciones de mandos listas` (fix: `localizedActionName` no vacío + `xrAttachSessionActionSets` explícito) |
+| Render estéreo visible | 🔶 **EN VALIDACIÓN** | Crash SIGSEGV en `xrEndFrame` con capas → **causa raíz: swapchains creados ANTES de `xrBeginSession`** (compositor Meta no registra sus imágenes → deref NULL+0x23/0x24 dentro de libvrapiimpl; con 0 capas funciona). Fix post-begin desplegado commit `0406088`, APK instalada |
+| Controles responden en juego | ⬜ | Pendiente de probar tras imagen estéreo (bindings thumbstick/trigger/grip/haptics ya creados) |
+| Menú VR + pulido | ⬜ | Paso 6 del plan |
 
-> ⚠️ **Aclaración importante:** la "inyección de DLL" es útil para *prototipar* en PC, pero **no es el camino recomendado** para un producto final ni para Android/Quest (donde el proceso es sandbox y no puedes inyectar DLLs por seguridad). El camino real y mantenible es **integrar OpenXR** en el render.
+### Diagnóstico del crash `xrEndFrame` (resumen para el historial)
+- Firma: SIGSEGV determinista `fault addr 0x23` (capa proyección, 2 vistas) / `0x24` (capa quad, 1 vista) en `libvrapiimpl.so+0x7d4568` ← `xrEndFrame+80`. Con `layerCount=0` no peta.
+- El volcado `LAYERDUMP` de la capa mostraba handles/rects/fov/poses **válidos** → descartado mal formato de capa, descartado mismatch de structs (loader y app: mismo header 1.1.63), descartado release prematuro de imagen (ya se libera tras `xrEndFrame`), descartado contexto de binding (probado con ES3 current + `glFinish`).
+- Conclusión (coherente con hello_xr y con la spec — `xrCreateSwapchain` no exige running, pero el runtime de Meta sí necesita registrar las imágenes al presentar): **crear los swapchains con la sesión RUNNING**.
 
-Dos opciones:
-
-| Opción | Ventaja | Inconveniente | Recomendada para |
-|---|---|---|---|
-| **A. OpenXR in-process** (integrar en `gl_vidsdl.c`) | Nativo, funciona en Quest, mantenible | Hay que tocar el render (matrices, doble vista) | ✅ **Producción / Android** |
-| **B. DLL inyectada** | Prueba rápida en PC sin tocar el motor | Frágil, no sirve en Android/Quest | Prototipo en PC |
-
-### 2.2 SDK necesario
-- **Khronos OpenXR SDK** (headers + loader) → https://github.khronos.org/OpenXR-SDK/
-  - Clave: `openxr_loader`, `openxr.h`, `openxr_platform.h`
-- **Validation Layers** (opcional, para depurar)
-- Para Quest: **Meta XR SDK / OpenXR mobile** (viene con el NDK de Meta)
-
-### 2.3 Qué hay que implementar en el motor (puntos de anclaje reales)
-Según el código (`graphify explain`):
-
-1. **Ventana/contexto** → `source/platform/sdl/gl/gl_vidsdl.c`
-   - Cambiar `SDL_CreateWindow` por sesión OpenXR + swapchain.
-   - `XrGraphicsBindingOpenGL` enlaza el contexto GL existente.
-2. **Cámara y proyección** → `source/render/r_screen.c`, `source/view.c`
-   - Renderizar **una vez por ojo** con matrices de proyección/vista del visor.
-3. **Input** → `source/input.c`, `source/platform/sdl/in_sdl.c`
-   - Ya existen `IN_GetAnalogStick` y soporte gyro/rumble (`PLATFORM_SUPPORTS_GYRO`, `PLATFORM_SUPPORTS_RUMBLE`) → mapear a acciones OpenXR.
-4. **Bucle principal** → `source/host.c` (`Host_Init`, `Host_Frame`)
-   - Insertar `xrWaitFrame` / `xrBeginFrame` / `xrEndFrame`.
-
-### 2.4 `injector.cpp` (incluido en este repo)
-Es un **esqueleto** para la Opción B (prototipo PC). Contiene el punto de entrada `DllMain` y `InitXR()` vacío. Sirve para experimentar rápido, **no** para el producto final.
+### 2.4 `injector.cpp` (DESCARTADO)
+Es un **esqueleto** para la Opción B (prototipo PC). No aplica: en Android/Quest no se pueden inyectar DLLs. La integración real es `vril-engine/source/platform/android/vr/vr_openxr.c` (Opción A ✅ en marcha).
 
 ### 2.5 Entregable de la fase
-- [ ] Motor renderiza en estereoscópico en un visor PC (Opción A)
-- [ ] Controles VR mapeados
-- [ ] (Opcional Quest) APK con OpenXR mobile
+- [x] Motor con ciclo OpenXR in-process en Android (`vr_openxr.c`, Opción A)
+- [x] Sesión hasta FOCUSED + swapchains + FBOs + head tracking + acciones (verificados en casco)
+- [ ] Imagen estéreo visible en ambos ojos (fix post-begin desplegado, en validación)
+- [ ] Controles VR mapeados y respondiendo en juego
+- [ ] (Opcional) XR_EXT_hp_mixed_reality_controller para poses de mandos + haptics en gameplay
 
 ---
 
@@ -214,10 +203,13 @@ Es un **esqueleto** para la Opción B (prototipo PC). Contiene el punto de entra
 | Build PC del motor | ✅ | `BUILD.bat` → `vril-engine/build/sdl/nzportable.exe` (3.557.000 bytes) |
 | Datos jugables | ✅ | `game\nzp\` — 1152 archivos / 105 MB (origen: release `nightly`) |
 | Lanzador | ✅ | `PLAY.bat` (añade `C:\msys64\ucrt64\bin` al PATH) |
-| Índice graphify | ✅ | `%USERPROFILE%\.local\bin\graphify.exe` |
+| Índice graphify | ✅ | `%USERPROFILE%\.local\bin\graphify.exe` — 36.800 nodos (motor + SDL + OpenXR-SDK + quakevr) |
 | uv (gestor Python) | ✅ | winget `astral-sh.uv` |
-| Android NDK | ❌ falta | ver 1.1 |
-| OpenXR SDK | ❌ falta | ver 2.2 |
+| Android NDK | ✅ | `28.2.13676358` (SDK en `%LOCALAPPDATA%\Android\Sdk`, platform-tools con adb) |
+| SDL2 + SDL2_mixer arm64 | ✅ | `SDL-release-2.32.10` + `SDL_mixer-release-2.8.2` compilados a `.a`/`.so` arm64-v8a |
+| OpenXR SDK | ✅ | `third_party\OpenXR-SDK` 1.1.63 — loader prebuilt `build-android\src\loader\libopenxr_loader.so` |
+| APK debug | ✅ | `android-app\app\build\outputs\apk\debug\app-debug.apk` (BUILD_APK.bat / scripts\build_apk.ps1) |
+| Quest 3 conectado | ✅ | serial `2G0YC5ZG7C00RJ`, package `com.nzpteam.nzportable` |
 
 ### Cómo usar el índice para ahorrar tiempo/tokens
 ```powershell
@@ -235,28 +227,32 @@ El grafo está unificado en `graphify-out/` (raíz del workspace, cubre motor + 
 | Orden | Tarea | Dificultad | Estado |
 |---|---|---|---|
 | 1 | Reunir datos jugables y **ver el juego en PC** | ⭐ Fácil | ✅ **HECHO** |
-| 2 | Instalar Android Studio (SDK+NDK+JDK) | ⭐ Fácil | ⏳ siguiente |
-| 3 | Compilar SDL2 para Android | ⭐⭐ Media | ⏳ |
-| 4 | Crear `source/platform/android/` + `Makefile.android` | ⭐⭐⭐ Media-alta | ⏳ |
-| 5 | Arrancar motor en emulador (sin assets) | ⭐⭐⭐ | ⏳ |
-| 6 | Empaquetar APK con assets | ⭐⭐⭐ | ⏳ |
-| 7 | Integrar OpenXR en PC (Opción A) | ⭐⭐⭐⭐ Alta | ⏳ |
-| 8 | (Opcional) OpenXR en Quest | ⭐⭐⭐⭐⭐ Muy alta | ⏳ |
+| 2 | Instalar Android Studio (SDK+NDK+JDK) | ⭐ Fácil | ✅ **HECHO** (NDK 28.2 per-user, sin admin) |
+| 3 | Compilar SDL2 para Android | ⭐⭐ Media | ✅ **HECHO** (2.32.10 estático+compartido, mixer 2.8.2) |
+| 4 | Crear `source/platform/android/` + build ndk-build | ⭐⭐⭐ Media-alta | ✅ **HECHO** (`libmain.so` 1,06 MB) |
+| 5 | Arrancar motor en dispositivo | ⭐⭐⭐ | ✅ **HECHO** (móvil MIUI + Quest 3) |
+| 6 | Empaquetar APK con assets | ⭐⭐⭐ | ✅ **HECHO** (105 MB en assets, extracción primer arranque) |
+| 7 | ✅→🔶 ~~Integrar OpenXR~~ → OpenXR en Quest standalone | ⭐⭐⭐⭐⭐ | 🔶 **90%**: sesión/acciones/poses/FBOs verificados; fix crash xrEndFrame desplegado, validar estéreo con casco |
+| 8 | Controles responden + pulido (menú VR, recenter, haptics) | ⭐⭐⭐ | ⬜ tras validación visual |
 
 ---
 
 ## ✅ Próximo paso inmediato
 
-**Paso 1 — ✅ COMPLETADO.** El juego arranca en PC desde el build propio:
-`vril-engine\build\sdl\nzportable.exe` + `game\nzp\` (1152 archivos), lanzado con `PLAY.bat`.
-Proceso vivo y estable (≈150 MB RAM, sin cierres).
+**Validar el fix de swapchains post-begin con el casco puesto** (APK ya instalada, commit `0406088`):
+```powershell
+# Despertar visor + lanzar en modo VR:
+adb shell input keyevent 224
+adb shell "am start -a android.intent.action.MAIN -c com.oculus.intent.category.VR -n com.nzpteam.nzportable/org.libsdl.app.SDLActivity"
+# A los ~30 s, leer log y comprobar que el proceso sigue vivo:
+adb shell "ps -A | grep nzportable"
+adb shell run-as com.nzpteam.nzportable grep -e 'post-begin' -e FBO -e LAYERDUMP -e fallo -e HB files/vr_log.txt
+```
+Éxito = `Intento de swapchains #N (estado=3/4/5, post-begin)` → `FBOs ojo listos` → `LAYERDUMP n=2` → **HB frames subiendo sin crash** → mundo en estéreo.
 
-**Paso 2 — Android (siguiente).** Instalar el NDK y preparar `Makefile.android`:
-1. Descargar **Android Studio** (incluye SDK, NDK, JDK) → https://developer.android.com/studio
-2. Verificar: `%LOCALAPPDATA%\Android\Sdk\ndk\<versión>\toolchains\llvm\prebuilt\windows-x86_64\bin\aarch64-linux-android24-clang.exe`
-3. Compilar SDL2 para `arm64-v8a` (fuente: https://github.com/libsdl-org/SDL/releases — `SDL2-2.*.zip`)
-4. Crear `source/platform/android/` tomando `source/platform/sdl/` como plantilla
-5. Usar `PLATFORM_DIRECTORY=android` y `PLATFORM_RENDERER=gles` en `Makefile.android`
+Si el crash persistiera en el mismo offset: siguiente hipótesis = registrar las imágenes vía `XR_KHR_swapchain_usage_input_attachment_bit`/formato sRGB, o fallback a `XR_EXT_win32_appcontainer_compatible`-style debugging con validation layer del loader.
+
+Después: mapear stick/trigger a comandos del juego (código ya escrito, falta prueba táctil), menú VR, y opcionalmente `XR_EXT_hp_mixed_reality_controller` para poses de mando.
 
 ---
 

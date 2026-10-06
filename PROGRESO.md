@@ -693,10 +693,30 @@ c:\nazizombiesportable\
 | 0 | Clonar SDKs + indexar + analizar referencia | ✅ hecho (hoy) |
 | 1 | Compilar el **loader OpenXR** para Android (arm64) y enlazarlo en Android.mk | ✅ hecho (libopenxr_loader.so 0,72 MB en jniLibs) |
 | 2 | Módulo `vr_openxr.c` mínimo: instance/session/swapchains + xrWaitFrame/Begin/End (sin render aún, solo log de poses) | ✅ **HECHO Y VERIFICADO** (ver detalle abajo) |
-| 3 | Render estéreo: FBO por ojo (GLES + OES_framebuffer_object) → xrEndFrame; mirror opcional | 🔶 código completo; swapchains pendientes de validar en casco |
-| 4 | Head tracking → cl.viewangles (pitch/yaw del HMD sumado al look táctil) | 🔶 código completo (delta de pose en VR_BeginFrame → in_sdl.c) |
-| 5 | Controles: XrActions (thumbsticks, trigger, grip, haptics) mapeados a los mismos bits que el táctil | 🔶 código completo (acciones + sticks + menú VR); requiere sesión activa |
+| 3 | Render estéreo: FBO por ojo (GLES + OES_framebuffer_object) → xrEndFrame; mirror opcional | 🔶 código completo; crash xrEndFrame con capas → fix swapchains post-begin desplegado, pendiente validar con casco |
+| 4 | Head tracking → cl.viewangles (pitch/yaw del HMD sumado al look táctil) | 🔶 código completo (delta de pose en VR_BeginFrame → in_sdl.c); **poses ya verificadas en casco** |
+| 5 | Controles: XrActions (thumbsticks, trigger, grip, haptics) mapeados a los mismos bits que el táctil | 🔶 código completo (acciones + sticks + menú VR); **"Acciones de mandos listas" verificado en casco** |
 | 6 | Menú VR (opciones vr_enabled, aim mode, recenter) + pulido | ⬜ |
+
+### 🔶 Sesión 2026-10-06 (madrugada) — sesión FOCUSED + crash xrEndFrame diagnosticado
+
+**Avances VERIFICADOS en Quest 3 (vr_log.txt, casco puesto):**
+- La sesión OpenXR llega por primera vez a **FOCUSED (estado 5)**: IDLE(1)→READY(2)→SYNCHRONIZED(3)→VISIBLE(4)→FOCUSED(5).
+- **"Acciones de mandos listas"** — XrActions creadas y adjuntas (fix: `localizedActionName` vacío violaba la spec → `xrCreateAction` fallaba; `xrAttachSessionActionSets` sin struct → NULL).
+- **Head tracking vivo**: `head pos=(x,y,z) yaw pitch` cambia al mover el casco (medido: yaw 0.2→-0.1, pitch 88.6→86.2).
+- **FBOs ojo 0/1 listos (3 imágenes)** — swapchains GL_RGBA8 1680x1760 creados bajo ES3.
+- 3 bugs de interbloqueo corregidos: (a) `xrWaitFrame` debe llamarse SIEMPRE con sesión iniciada (Meta solo emite SYNCHRONIZED después del primer Wait — si se espera el estado, sesión clavada en READY = negro); (b) `fwi.type = XR_TYPE_FRAME_WAIT_INFO` faltaba → VALIDATION_FAILURE spam; (c) imagenes de swapchain deben permanecer adquiridas HASTA después de `xrEndFrame` (release antes = capa corrupta).
+
+**Crash SIGSEGV en xrEndFrame (libvrapiimpl, fault 0x23): CAUSA RAÍZ IDENTIFICADA.**
+- Firma: `xrEndFrame` con 1 capa (proyección O quad — ambas petan en el mismo offset `0x7d4568`) → derefencia NULL+0x23; con 0 capas funciona. El `LAYERDUMP` del diagnóstico mostró la capa perfecta (space/sc handles válidos, rects/fov/poses correctos) → el problema NO son los datos de la capa.
+- **Causa: swapchains creados ANTES de `xrBeginSession`** (workaround de la sesión anterior). El compositor de Meta solo registra las imágenes del swapchain en su tabla de capas si el swapchain se crea con la sesión **RUNNING**; pre-begin deja el registro interno NULL → SIGSEGV al presentar. La justificación del "interbloqueo" era falsa: `xrWaitFrame` no necesita swapchains.
+- **Fix desplegado (commit `0406088`)**: `xrBeginSession` directo en READY → swapchains post-begin cuando el estado es SYNCHRONIZED+ (ciclo Wait/Begin/End vacío con 0 capas avanza la máquina mientras tanto), igual que hello_xr.
+- **Pendiente: validar con casco puesto** que el primer `xrEndFrame` con capa retorna XR_SUCCESS y se ve el mundo en estéreo. APK instalada, lanzamiento: `scripts\run_android.ps1` o `am start -a android.intent.action.MAIN -c com.oculus.intent.category.VR -n com.nzpteam.nzportable/org.libsdl.app.SDLActivity`.
+
+**Lecciones de proceso:**
+- No fiarse de "BUILD OK" encadenado: el ndk-build puede fallar y el APK step compila el `.so` viejo. Verificar SIEMPRE marcadores string en `libmain.so` antes del APK (patrón ReadAllBytes+Contains en PROGRESO). El BuildId del crash delata un `.so` rancio.
+- El visor dormido (`mWakefulness=Asleep`, visible en `dumpsys power`) congela la sesión VR: despertar con `adb shell input keyevent 224` antes de lanzar.
+- `third_party/quakevr` es OpenVR/SteamVR, NO OpenXR — no sirve de referencia de ciclo; la referencia válida es hello_xr (Khronos).
 
 ### 🔶 Pasos 3-5 en curso (2026-10-05) — estado real en Quest 3
 
