@@ -38,9 +38,16 @@ void VR_Shutdown (void);
 qboolean VR_BeginFrame (void);
 qboolean VR_EndFrame (void);
 
+// Diagnostico: escribe en vr_log.txt desde fuera del modulo VR (bucle principal).
+void VR_DiagLog (const char *fmt, ...);
+
 // Estado para el motor.
 qboolean VR_IsAvailable (void);	// hay runtime + HMD
 qboolean VR_IsActive (void);	// disponible Y vr_enabled 1
+
+// true tras xrBeginSession exitoso: la ventana 2D ya no se puede presentar
+// (el compositor VR tiene el display) y GL_EndRendering debe saltar el swap.
+qboolean VR_IsSessionStarted (void);
 
 // true mientras haya un frame VR en curso (entre VR_BeginFrame y VR_EndFrame):
 // SCR_UpdateScreen debe dibujar en los ojos (VR_BeginEye/VR_EndEye).

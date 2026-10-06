@@ -1291,17 +1291,32 @@ int main(int argc, char **argv)
 	VR_Init();
 #endif
 	oldtime = Sys_FloatTime();
+#ifdef NZP_VR_OPENXR
+	int vr_diag_i = 0;
+#endif
 	while (sdl_running) {
 		double now = Sys_FloatTime();
 #ifdef NZP_VR_OPENXR
 		/* VR: xrWaitFrame/xrBeginFrame antes de simular+renderizar, y
 		 * xrEndFrame despues. Sin capas todavia (paso 3: render estereo). */
 		qboolean vr_frame = VR_IsActive() && VR_BeginFrame();
+		/* Diagnostico: primeras iteraciones del bucle para ver si el loop
+		 * sigue vivo tras xrBeginSession y donde se atasca si no. */
+		if (vr_diag_i < 40) {
+			vr_diag_i++;
+			VR_DiagLog("LOOP %d active=%d frame=%d started=%d", vr_diag_i,
+				(int)VR_IsActive(), (int)vr_frame, (int)VR_IsSessionStarted());
+		}
 #endif
 		Host_Frame(now - oldtime);
 #ifdef NZP_VR_OPENXR
 		if (vr_frame)
 			VR_EndFrame();
+		else if (VR_IsSessionStarted())
+			SDL_Delay(8);	/* sesion VR abierta pero sin compositor (estado
+							 * READY/SYNC aun): no quemar CPU ni llenar el log */
+		if (vr_diag_i == 10 || vr_diag_i == 20 || vr_diag_i == 40)
+			VR_DiagLog("LOOP %d post-Host_Frame", vr_diag_i);
 #endif
 		music_update();
 		oldtime = now;

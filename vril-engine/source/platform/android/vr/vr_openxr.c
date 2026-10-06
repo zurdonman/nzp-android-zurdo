@@ -168,6 +168,7 @@ static qboolean VR_CreateES3Context (EGLConfig config, EGLContext ctx_game);
 static qboolean VR_BindES3Context (EGLSurface *out_draw, EGLSurface *out_read);
 static void VR_RestoreGameContext (EGLSurface draw, EGLSurface read, EGLContext ctx_game);
 static qboolean VR_CreateEyeFBOs (int eye);
+static void VR_ReleaseAcquiredImages (void);
 static void VR_DestroySessionObjects (void);
 static void VR_QuatToYawPitch (XrQuaternionf q, float *yaw_deg, float *pitch_deg);
 static qboolean VR_InitActions (void);
@@ -219,6 +220,19 @@ static void VR_LogWrite (const char *fmt, ...)
 }
 
 #define VR_LOG(...) VR_LogWrite(__VA_ARGS__)
+
+/* Log de diagnostico accesible desde el bucle principal (sys_sdl.c):
+ * escribe en vr_log.txt igual que VR_LOG. */
+void VR_DiagLog (const char *fmt, ...)
+{
+	char buf[1024];
+	va_list ap;
+
+	va_start(ap, fmt);
+	vsnprintf(buf, sizeof(buf), fmt, ap);
+	va_end(ap);
+	VR_LogWrite("%s", buf);
+}
 
 static const char *VR_ResultString (XrResult r)
 {
@@ -812,6 +826,7 @@ static qboolean VR_InitActions (void)
 		memset(&aci, 0, sizeof(aci));
 		aci.type = XR_TYPE_ACTION_CREATE_INFO;
 		Q_strncpy(aci.actionName, name, sizeof(aci.actionName));
+		Q_strncpy(aci.localizedActionName, name, sizeof(aci.localizedActionName));
 		aci.actionType = XR_ACTION_TYPE_VECTOR2F_INPUT;
 		aci.countSubactionPaths = 1;
 		aci.subactionPaths = &vr_hand_path[h];
@@ -824,6 +839,7 @@ static qboolean VR_InitActions (void)
 		memset(&aci, 0, sizeof(aci));
 		aci.type = XR_TYPE_ACTION_CREATE_INFO;
 		Q_strncpy(aci.actionName, name, sizeof(aci.actionName));
+		Q_strncpy(aci.localizedActionName, name, sizeof(aci.localizedActionName));
 		aci.actionType = XR_ACTION_TYPE_FLOAT_INPUT;
 		aci.countSubactionPaths = 1;
 		aci.subactionPaths = &vr_hand_path[h];
@@ -836,6 +852,7 @@ static qboolean VR_InitActions (void)
 		memset(&aci, 0, sizeof(aci));
 		aci.type = XR_TYPE_ACTION_CREATE_INFO;
 		Q_strncpy(aci.actionName, name, sizeof(aci.actionName));
+		Q_strncpy(aci.localizedActionName, name, sizeof(aci.localizedActionName));
 		aci.actionType = XR_ACTION_TYPE_FLOAT_INPUT;
 		aci.countSubactionPaths = 1;
 		aci.subactionPaths = &vr_hand_path[h];
@@ -847,6 +864,7 @@ static qboolean VR_InitActions (void)
 		snprintf(name, sizeof(name), "haptic_%s", h ? "right" : "left");
 		memset(&aci, 0, sizeof(aci));
 		aci.type = XR_TYPE_ACTION_CREATE_INFO;
+		Q_strncpy(aci.localizedActionName, name, sizeof(aci.localizedActionName));
 		Q_strncpy(aci.actionName, name, sizeof(aci.actionName));
 		aci.actionType = XR_ACTION_TYPE_VIBRATION_OUTPUT;
 		aci.countSubactionPaths = 1;
@@ -859,6 +877,7 @@ static qboolean VR_InitActions (void)
 		snprintf(name, sizeof(name), "pose_%s", h ? "right" : "left");
 		memset(&aci, 0, sizeof(aci));
 		aci.type = XR_TYPE_ACTION_CREATE_INFO;
+		Q_strncpy(aci.localizedActionName, name, sizeof(aci.localizedActionName));
 		Q_strncpy(aci.actionName, name, sizeof(aci.actionName));
 		aci.actionType = XR_ACTION_TYPE_POSE_INPUT;
 		aci.countSubactionPaths = 1;
@@ -877,6 +896,7 @@ static qboolean VR_InitActions (void)
 	};
 	for (size_t i = 0; i < sizeof(buttons) / sizeof(buttons[0]); i++) {
 		memset(&aci, 0, sizeof(aci));
+		Q_strncpy(aci.localizedActionName, buttons[i].name, sizeof(aci.localizedActionName));
 		aci.type = XR_TYPE_ACTION_CREATE_INFO;
 		Q_strncpy(aci.actionName, buttons[i].name, sizeof(aci.actionName));
 		aci.actionType = XR_ACTION_TYPE_BOOLEAN_INPUT;
@@ -919,11 +939,17 @@ static qboolean VR_InitActions (void)
 			VR_LOG("xrSuggestInteractionProfileBindings fallo (%d)", (int)r);
 	}
 
-	if (XR_FAILED(xrAttachSessionActionSets(vr_session, NULL))) {
-		// Nota: se llama sin info (action set unico ya queda adjunto por
-		// defecto en algunos runtimes); si falla, los mandos no funcionan
-		// pero el juego sigue.
-		VR_LOG("xrAttachSessionActionSets fallo");
+	// xrAttachSessionActionSets exige info explicita (NULL es invalido).
+	{
+		XrSessionActionSetsAttachInfo attach;
+		memset(&attach, 0, sizeof(attach));
+		attach.type = XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO;
+		attach.countActionSets = 1;
+		attach.actionSets = &vr_actionset;
+		r = xrAttachSessionActionSets(vr_session, &attach);
+	}
+	if (XR_FAILED(r)) {
+		VR_LOG("xrAttachSessionActionSets fallo: %s", VR_ResultString(r));
 		return false;
 	}
 
@@ -1181,7 +1207,15 @@ static void VR_PumpEvents (void)
 					case XR_SESSION_STATE_LOSS_PENDING:
 					case XR_SESSION_STATE_EXITING:
 						vr_session_focused = false;
+						// Fin de sesion: la spec exige destruir los
+						// swapchains ANTES de xrEndSession. Se recrean
+						// cuando vuelva READY (VR_BeginFrame reintenta el
+						// ciclo completo pre-begin).
+						VR_DestroySwapchains();
+						if (vr_session_running && e->state == XR_SESSION_STATE_STOPPING)
+							xrEndSession(vr_session);
 						vr_session_running = false;
+						vr_frame_waited = false;
 						break;
 					default:
 						break;
@@ -1210,8 +1244,9 @@ qboolean VR_BeginFrame (void)
 		return false;
 
 	// Heartbeat: si el bucle del motor esta congelado (app pausada por
-	// pantalla apagada) no aparecera en vr_log.txt.
-	if ((++vr_heartbeat_frames % 300) == 0)
+	// pantalla apagada) no aparecera en vr_log.txt. Cada 1800 frames (~30 s
+	// a 60 fps) para no inundar el log.
+	if ((++vr_heartbeat_frames % 1800) == 0)
 		VR_LOG("HB frames=%d estado=%d running=%d sc=%d", vr_heartbeat_frames,
 			(int)vr_session_state, (int)vr_session_running, (int)vr_swapchains_ready);
 
@@ -1225,7 +1260,15 @@ qboolean VR_BeginFrame (void)
 		return false;
 	}
 
-	// Fase 2: con la sesion en READY (2), arrancarla y crear swapchains.
+	// Fase 2: con la sesion en READY (2), INICIARLA ya, SIN swapchains. Orden
+	// canonico hello_xr: begin -> CreateSwapchains -> bucle Wait/Begin/End.
+	// CRITICO Meta: el compositor (libvrapiimpl) solo registra las imagenes
+	// del swapchain en su tabla de capas si el swapchain se crea con la
+	// sesion ya RUNNING. Crear los swapchains ANTES de xrBeginSession deja
+	// ese registro interno a NULL, y el primer xrEndFrame con una capa que
+	// referencia ese swapchain derefencia NULL+0x23 -> SIGSEGV determinista
+	// en libvrapiimpl (ver crash 0x7d4568). xrWaitFrame NO necesita los
+	// swapchains (EndFrame con 0 capas funciona), asi que no hay interbloqueo.
 	if (!vr_session_running) {
 		// Meta exige esperar a READY antes de xrBeginSession.
 		if (vr_session_state != XR_SESSION_STATE_READY)
@@ -1242,58 +1285,49 @@ qboolean VR_BeginFrame (void)
 			return false;
 		}
 		vr_session_running = true;
-		VR_LOG("Sesion INICIADA (estereo)");
-		// Los swapchains esperan a SYNCHRONIZED (fase 3, frames siguientes).
+		VR_LOG("Sesion INICIADA (estereo) — swapchains se crean post-begin");
 		return false;
 	}
 
-	// Swapchains + acciones: intentar desde READY (tras begin) hacia arriba.
-	// El runtime de Meta NO manda SYNCHRONIZED si el casco esta sin poners,
-	// y necesitamos poder probar/validar la creacion de swapchains tambien
-	// sin casco. Reintento con backoff (1 vez cada 120 frames, max 40
-	// intentos = ~70 s) para no inundar vr_log.txt si el runtime falla.
-	{
+	// Swapchains POST-begin: Meta los rechaza (-2) hasta que la sesion esta
+	// SYNCHRONIZED+, y SYNCHRONIZED solo llega DESPUES del primer xrWaitFrame.
+	// Por eso NO bloqueamos aqui: si aun no estan listos dejamos que continue
+	// el ciclo Wait/Begin/End VACIO (0 capas) para avanzar la maquina de
+	// estados; en cuanto el estado sea SYNCHRONIZED/VISIBLE/FOCUSED creamos
+	// los swapchains (sesion RUNNING -> compositor los registra bien).
+	if (!vr_swapchains_ready &&
+		(vr_session_state == XR_SESSION_STATE_SYNCHRONIZED ||
+		 vr_session_state == XR_SESSION_STATE_VISIBLE ||
+		 vr_session_state == XR_SESSION_STATE_FOCUSED)) {
 		static int soi_attempts = 0;
-		static int soi_frames = 0;
-		static int soi_last_state = -1;
-		if (!vr_swapchains_ready) {
-			qboolean state_changed = ((int)vr_session_state != soi_last_state);
-			soi_last_state = (int)vr_session_state;
-			// Reintenta ya si el estado cambio (p.ej. casco puesto ->
-			// SYNCHRONIZED), o periodicamente (cada 120 frames) si sigue
-			// fallando. Max 40 intentos para no spamear el log.
-			if (soi_attempts < 40 && (state_changed || (soi_frames % 120) == 0)) {
-				soi_attempts++;
-				VR_LOG("Intento de swapchains #%d (estado=%d)", soi_attempts,
-					(int)vr_session_state);
-				if (!VR_CreateSessionObjects())
-					VR_LOG("Intento #%d FALLO", soi_attempts);
-			}
-			soi_frames++;
-			if (!vr_swapchains_ready)
-				return false;
+		if (soi_attempts < 60) {
+			soi_attempts++;
+			VR_LOG("Intento de swapchains #%d (estado=%d, post-begin)",
+				soi_attempts, (int)vr_session_state);
+			if (!VR_CreateSessionObjects())
+				VR_LOG("Intento #%d FALLO", soi_attempts);
 		}
 	}
 
-	// Solo se puede presentar cuando la sesion esta sincronizada/visible/
-	// focused (el compositor corre con el casco puesto).
-	switch (vr_session_state) {
-		case XR_SESSION_STATE_SYNCHRONIZED:
-		case XR_SESSION_STATE_VISIBLE:
-		case XR_SESSION_STATE_FOCUSED:
-			break;
-		default:
-			return false;
-	}
-
-	// xrWaitFrame una vez por frame del motor
+	// xrWaitFrame SIEMPRE que la sesion esta iniciada, sea cual sea el
+	// estado. El runtime de Meta solo emite SYNCHRONIZED/VISIBLE/FOCUSED
+	// DESPUES de ver el primer xrWaitFrame; si esperamos el estado para
+	// llamarlo, la sesion queda clavada en READY (HMD en negro). Orden
+	// canonico hello_xr: Wait -> Begin -> (render) -> End cada frame.
 	if (!vr_frame_waited) {
 		XrFrameWaitInfo fwi;
 		memset(&fwi, 0, sizeof(fwi));
+		fwi.type = XR_TYPE_FRAME_WAIT_INFO;
 		memset(&vr_frame_state, 0, sizeof(vr_frame_state));
 		vr_frame_state.type = XR_TYPE_FRAME_STATE;
 
-		XR_CHECK(xrWaitFrame(vr_session, &fwi, &vr_frame_state));
+		XrResult rw = xrWaitFrame(vr_session, &fwi, &vr_frame_state);
+		if (XR_FAILED(rw)) {
+			// SessionEventInvalid/session cerrada: el proximo PumpEvents
+			// pondra el estado correcto y se reintentara el ciclo.
+			VR_LOG("xrWaitFrame fallo: %s", VR_ResultString(rw));
+			return false;
+		}
 		vr_frame_waited = true;
 	}
 
@@ -1301,12 +1335,23 @@ qboolean VR_BeginFrame (void)
 	memset(&fbi, 0, sizeof(fbi));
 	fbi.type = XR_TYPE_FRAME_BEGIN_INFO;
 
-	XR_CHECK(xrBeginFrame(vr_session, &fbi));
+	if (XR_FAILED(xrBeginFrame(vr_session, &fbi))) {
+		vr_frame_waited = false;
+		return false;
+	}
 
-	// Poses de la cabeza + vistas por ojo (paso 3/4). Se localizan en el
-	// espacio LOCAL: esas mismas poses son las que exige la capa de
-	// proyeccion en xrEndFrame.
-	{
+	// Solo dibujamos cuando el compositor lo pide (shouldRender) y la sesion
+	// esta sincronizada/visible/focused. En READY u otros estados hacemos el
+	// ciclo Wait/Begin/End VACIO (sin capas) para que el runtime avance.
+	vr_rendering = vr_frame_state.shouldRender == XR_TRUE &&
+		(vr_session_state == XR_SESSION_STATE_SYNCHRONIZED ||
+		 vr_session_state == XR_SESSION_STATE_VISIBLE ||
+		 vr_session_state == XR_SESSION_STATE_FOCUSED);
+
+	if (vr_rendering) {
+		// Poses de la cabeza + vistas por ojo (paso 3/4). Se localizan en el
+		// espacio LOCAL: esas mismas poses son las que exige la capa de
+		// proyeccion en xrEndFrame.
 		XrViewState view_state;
 		memset(&view_state, 0, sizeof(view_state));
 		view_state.type = XR_TYPE_VIEW_STATE;
@@ -1353,14 +1398,15 @@ qboolean VR_BeginFrame (void)
 		} else {
 			vr_views_valid = false;
 		}
+	} else {
+		vr_views_valid = false;
 	}
 
 	// Lectura de mandos (paso 5): rellena vr_move_x/y y dispara comandos.
 	VR_PollActions();
 
 	// A partir de aqui SCR_UpdateScreen (llamado por Host_Frame) dibujara en
-	// los FBOs de los ojos en vez de en la ventana 2D.
-	vr_rendering = true;
+	// los FBOs de los ojos (solo si vr_rendering) en vez de la ventana 2D.
 	vr_eyes_done[0] = vr_eyes_done[1] = false;
 	vr_current_eye = -1;
 
@@ -1390,6 +1436,10 @@ qboolean VR_EndFrame (void)
 		proj_views[proj_count].pose = vr_eye_view[eye].pose;
 		proj_views[proj_count].fov = vr_eye_view[eye].fov;
 		proj_views[proj_count].subImage.swapchain = vr_eye_swapchain[eye];
+		// OpenXR (header de este SDK): XrSwapchainSubImage NO tiene
+		// imageIndex; el compositor presenta implicitamente LA imagen
+		// adquirida este frame (xrAcquireSwapchainImage en VR_BeginEye).
+		proj_views[proj_count].subImage.imageArrayIndex = 0;
 		proj_views[proj_count].subImage.imageRect.offset.x = 0;
 		proj_views[proj_count].subImage.imageRect.offset.y = 0;
 		proj_views[proj_count].subImage.imageRect.extent.width = vr_eye_width;
@@ -1404,23 +1454,100 @@ qboolean VR_EndFrame (void)
 	layer.viewCount = (uint32_t)proj_count;
 	layer.views = proj_views;
 
+	// DIAGNOSTICO crash xrEndFrame: volcar el contenido EXACTO de la capa los
+	// primeros frames (espacio, swapchains, indices adquiridos, rects, fov)
+	// para ver que campo esta corrupto/nulo cuando Meta derefencia 0x23.
+	{
+		static int layer_dump = 0;
+		if (layer_dump < 6) {
+			layer_dump++;
+			VR_LOG("LAYERDUMP n=%d space=%p sc0=%p sc1=%p acq=[%u,%u] done=[%d,%d] w=%u h=%u",
+				proj_count, (void *)(uintptr_t)vr_local_space,
+				(void *)(uintptr_t)vr_eye_swapchain[0], (void *)(uintptr_t)vr_eye_swapchain[1],
+				(unsigned)vr_eye_acquired[0], (unsigned)vr_eye_acquired[1],
+				(int)vr_eyes_done[0], (int)vr_eyes_done[1],
+				(unsigned)vr_eye_width, (unsigned)vr_eye_height);
+			for (int v = 0; v < proj_count; v++) {
+				VR_LOG("LAYERDUMP view[%d] swap=%p rect=(%d,%d %ux%u) arr=%u pose.p=(%.2f,%.2f,%.2f) fov=(%.2f,%.2f,%.2f,%.2f)",
+					v, (void *)(uintptr_t)proj_views[v].subImage.swapchain,
+					(int)proj_views[v].subImage.imageRect.offset.x,
+					(int)proj_views[v].subImage.imageRect.offset.y,
+					(unsigned)proj_views[v].subImage.imageRect.extent.width,
+					(unsigned)proj_views[v].subImage.imageRect.extent.height,
+					(unsigned)proj_views[v].subImage.imageArrayIndex,
+					(double)proj_views[v].pose.position.x, (double)proj_views[v].pose.position.y,
+					(double)proj_views[v].pose.position.z,
+					(double)proj_views[v].fov.angleLeft, (double)proj_views[v].fov.angleRight,
+					(double)proj_views[v].fov.angleUp, (double)proj_views[v].fov.angleDown);
+			}
+		}
+	}
+
+	// TEST A/B (vr_debug=2): capa QUAD con la imagen del ojo 0 en vez de la
+	// capa de proyeccion. Si el quad se ve -> el bug esta en la capa de
+	// PROYECCION (poses/fov/space); si peta igual -> el swapchain/imagen.
+	XrCompositionLayerQuad quad;
+	memset(&quad, 0, sizeof(quad));
+	qboolean quad_test = (vr_debug.value >= 2.0f && proj_count > 0 && vr_eyes_done[0]);
+	if (quad_test) {
+		static int quad_logged = 0;
+		if (!quad_logged) { quad_logged = 1; VR_LOG("QUADTEST: capa quad en lugar de proyeccion"); }
+		quad.type = XR_TYPE_COMPOSITION_LAYER_QUAD;
+		quad.space = vr_local_space;
+		quad.pose.position.z = -1.5f;
+		quad.pose.orientation.w = 1.0f;
+		quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+		quad.subImage.swapchain = vr_eye_swapchain[0];
+		quad.subImage.imageRect.extent.width = vr_eye_width;
+		quad.subImage.imageRect.extent.height = vr_eye_height;
+		quad.size.width = 1.2f;
+		quad.size.height = (1.2f * (float)vr_eye_height) / (float)vr_eye_width;
+	}
+
 	XrFrameEndInfo fei;
 	memset(&fei, 0, sizeof(fei));
 	fei.type = XR_TYPE_FRAME_END_INFO;
 	fei.displayTime = vr_frame_state.predictedDisplayTime;
 	fei.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
 	if (vr_views_valid && proj_count > 0) {
+		// El compositor Meta va a muestrear las texturas del swapchain en su
+		// propio contexto GL: hay que haber sometido los comandos de dibujo
+		// (los samples GLES de Meta/hello_xr hacen glFinish aqui).
+		glFinish();
+
+		// CRITICO Meta/GLES: xrEndFrame procesa la capa usando el contexto
+		// PASADO en el graphics binding de la sesion (nuestro ES3 auxiliar),
+		// no el contexto 1.1 del juego que esta current ahora. Si el runtime
+		// no lo encuentra, dereferencia un objeto interno nulo -> SIGSEGV
+		// (fault addr 0x23) dentro de libvrapiimpl. hello_xr mantiene el
+		// contexto de binding current durante todo el ciclo de frame.
+		EGLContext ctx_game = eglGetCurrentContext();
+		EGLSurface es3_draw = EGL_NO_SURFACE, es3_read = EGL_NO_SURFACE;
+		qboolean es3_bound = VR_BindES3Context(&es3_draw, &es3_read);
+
 		fei.layerCount = 1;
-		fei.layers = (const XrCompositionLayerBaseHeader *const *)&layer;
+		fei.layers = quad_test
+			? (const XrCompositionLayerBaseHeader *const *)&quad
+			: (const XrCompositionLayerBaseHeader *const *)&layer;
+
+		XrResult r2 = xrEndFrame(vr_session, &fei);
+		if (es3_bound)
+			VR_RestoreGameContext(es3_draw, es3_read, ctx_game);
+		vr_frame_waited = false;
+		VR_ReleaseAcquiredImages();
+		if (XR_FAILED(r2)) {
+			VR_LOG("xrEndFrame fallo: %s", VR_ResultString(r2));
+			return false;
+		}
+		return true;
 	}
 	// Sin vistas validas o sin ojos dibujados: frame sin capas (HMD en negro)
 	// pero el ritmo de xrWaitFrame/xrBeginFrame/xrEndFrame se mantiene.
-
 	XrResult r = xrEndFrame(vr_session, &fei);
 	vr_frame_waited = false;
-
+	VR_ReleaseAcquiredImages();
 	if (XR_FAILED(r)) {
-		VR_LOG("xrEndFrame fallo: %s", VR_ResultString(r));
+		VR_LOG("xrEndFrame (sin capas) fallo: %s", VR_ResultString(r));
 		return false;
 	}
 	return true;
@@ -1506,6 +1633,15 @@ qboolean VR_IsActive (void)
 	// de VR_BeginFrame (necesita el contexto EGL del juego ya actual).
 	// Solo exigimos runtime disponible + cvar activado.
 	return vr_available && vr_enabled.value > 0;
+}
+
+// true una vez que xrBeginSession tuvo exito: el compositor VR reclama el
+// display y el swap de la ventana 2D (SDL_GL_SwapWindow) haria spin-wait de
+// un VBlank que ya no llega, congelando el bucle. GL_EndRendering debe
+// saltarse el swap 2D en cuanto esto sea true.
+qboolean VR_IsSessionStarted (void)
+{
+	return vr_available && vr_enabled.value > 0 && vr_session_running;
 }
 
 // true mientras haya un frame VR en curso: SCR_UpdateScreen debe dibujar en
@@ -1624,7 +1760,10 @@ qboolean VR_BeginEye (int eye)
 	return true;
 }
 
-// Termina el ojo actual: desvincula el FBO y libera la imagen de swapchain.
+// Termina el ojo actual: desvincula el FBO. NO libera la imagen de
+// swapchain aqui: la spec exige que la imagen permanezca ADQUIRIDA hasta
+// despues de xrEndFrame; liberarla antes corrompe el estado interno del
+// compositor de Meta (SIGSEGV en libvrapiimpl dentro de xrEndFrame).
 void VR_EndEye (int eye)
 {
 	if (eye < 0 || eye > 1 || !vr_eye_acquiring[eye])
@@ -1632,14 +1771,23 @@ void VR_EndEye (int eye)
 
 	glBindFramebufferOES(GL_FRAMEBUFFER_OES, 0);
 
-	XrSwapchainImageReleaseInfo ri;
-	memset(&ri, 0, sizeof(ri));
-	ri.type = XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO;
-	xrReleaseSwapchainImage(vr_eye_swapchain[eye], &ri);
-
-	vr_eye_acquiring[eye] = false;
 	vr_eyes_done[eye] = true;
 	vr_current_eye = -1;
+}
+
+// Libera las imagenes adquiridas del frame (llamar tras xrEndFrame).
+static void VR_ReleaseAcquiredImages (void)
+{
+	for (int eye = 0; eye < 2; eye++) {
+		if (!vr_eye_acquiring[eye] || vr_eye_swapchain[eye] == XR_NULL_HANDLE)
+			continue;
+		XrSwapchainImageReleaseInfo ri;
+		memset(&ri, 0, sizeof(ri));
+		ri.type = XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO;
+		if (XR_FAILED(xrReleaseSwapchainImage(vr_eye_swapchain[eye], &ri)))
+			VR_LOG("xrReleaseSwapchainImage fallo (ojo %d)", eye);
+		vr_eye_acquiring[eye] = false;
+	}
 }
 
 #endif // NZP_VR_OPENXR

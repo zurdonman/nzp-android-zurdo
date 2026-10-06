@@ -94,19 +94,22 @@ void VID_SetVSync(qboolean vsync)
 
 void GL_EndRendering(void)
 {
+#ifdef NZP_VR_OPENXR
+	/* VR: el frame se presenta via xrEndFrame (capa de proyeccion), no con el
+	 * swap de la ventana. Ademas, tras xrBeginSession el compositor VR reclama
+	 * el display: SDL_GL_SwapWindow (y VID_SetFullscreen/VSync, que tambien
+	 * tocan la surface) harian spin-wait de un VBlank que ya no llega y
+	 * congelarian el bucle principal antes de poder crear los swapchains.
+	 * Saltar todo el swap 2D en cuanto la sesion VR esta iniciada. */
+	if (VR_IsSessionStarted())
+		return;
+#endif
 	int fullscreen = vid_fullscreen.value != 0.0f;
 	int vsync = r_vsync.value != 0.0f;
 	if (fullscreen != sdl_fullscreen)
 		VID_SetFullscreen(fullscreen);
 	if (vsync != sdl_vsync)
 		VID_SetVSync(vsync);
-#ifdef NZP_VR_OPENXR
-	/* VR: el frame se presenta via xrEndFrame (capa de proyeccion), no con el
-	 * swap de la ventana. Ademas el panel 2D del Quest muestra el ultimo
-	 * contenido de la ventana; dejarlo en negro evita el doble render. */
-	if (VR_IsRendering())
-		return;
-#endif
 	SDL_GL_SwapWindow(sdl_window);
 }
 

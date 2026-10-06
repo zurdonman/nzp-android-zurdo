@@ -832,6 +832,12 @@ void SCR_UpdateScreen (void)
 		SCR_UpdateScreenVR();
 		return;
 	}
+	/* Sesion VR iniciada pero swapchains aun no listos: NO dibujar a la
+	 * ventana 2D. El compositor VR tiene el display y la cola de comandos
+	 * GL del window surface se llena y bloquea el bucle principal (nunca
+	 * llegariamos a VR_BeginFrame para reintentar los swapchains). */
+	if (VR_IsSessionStarted())
+		return;
 #endif
 
 	vid.numpages = 2 + gl_triplebuffer.value;

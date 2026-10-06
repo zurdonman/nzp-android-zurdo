@@ -14,6 +14,10 @@
     <!-- VR (Quest): head tracking disponible pero no obligatorio (los moviles
          no lo tienen y deben poder instalar la app). -->
     <uses-feature android:name="android.hardware.vr.headtracking" android:version="1" android:required="false" />
+    <!-- VR (Quest): hand tracking opcional. Declararlo evita el dialogo
+         obligatorio de "coge los mandos" de vrshell (LaunchCheckControllerRequired). -->
+    <uses-feature android:name="oculus.software.handtracking" android:required="false" />
+    <uses-permission android:name="com.oculus.permission.HAND_TRACKING" />
 
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- NZ:P Android (zurdo): multijugador LAN (broadcast y sockets UDP) -->
@@ -32,6 +36,13 @@
              runtime la rechaza con -50). En moviles este meta-data se ignora
              y el juego sigue funcionando normal. -->
         <meta-data android:name="com.samsung.android.vr.application.mode" android:value="vr_only" />
+
+        <!-- VR (Quest): dispositivos soportados. Sin esto, vrshell muestra el
+             dialogo "coge tus mandos" (LaunchCheckControllerRequired) antes de
+             lanzar y la app nunca arranca sola. Declararlo deja arrancar la
+             sesion OpenXR directamente (mandos o hand tracking). -->
+        <meta-data android:name="com.oculus.supportedDevices"
+            android:value="quest2|quest3|questpro|eureka" />
 
         <activity android:name="org.libsdl.app.SDLActivity"
             android:label="@string/app_name"
