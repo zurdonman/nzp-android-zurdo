@@ -84,7 +84,7 @@ jobs:
             NDK_PROJECT_PATH=. \
             APP_BUILD_SCRIPT=jni/Android.mk \
             NDK_APPLICATION_MK=jni/Application.mk \
-            -j"$(nproc)" 2>&1 | tee /tmp/ci-logs/ndk-build.log
+            -j"$(nproc)" 2>&1 | tee /tmp/ci-logs/ndk-build.txt
           exit "${PIPESTATUS[0]}"
 
       - name: Copiar librerias nativas al proyecto Android
@@ -128,9 +128,24 @@ jobs:
           git fetch --depth=1 origin ci-logs || true
           git checkout -B ci-logs || true
           rm -rf logs
-          mkdir -p "logs/run-$GITHUB_RUN_ID"
-          cp /tmp/ci-logs/* "logs/run-$GITHUB_RUN_ID/" 2>/dev/null || true
-          git add -A logs
+          D="logs/run-$GITHUB_RUN_ID"
+          mkdir -p "$D"
+          # OJO: .gitignore ignora *.log, por eso el volcado usa .txt y se
+          # fuerza el add (-f) para que nunca se pierda el diagnostico.
+          {
+            echo "== entorno =="
+            echo "ANDROID_HOME=$ANDROID_HOME"
+            echo "NDK_VERSION=$NDK_VERSION"
+            echo
+            echo "== \$ANDROID_HOME/ndk =="
+            ls -la "$ANDROID_HOME/ndk/" 2>&1 || true
+            echo
+            echo "== ndk-build =="
+            ls -la "$ANDROID_HOME/ndk/$NDK_VERSION/ndk-build" 2>&1 || true
+          } > "$D/diagnostico.txt" 2>&1
+          cat /tmp/ci-logs/ndk-build.txt > "$D/ndk-build.txt" 2>/dev/null \
+            || echo "(el paso de ndk-build no dejo log)" > "$D/ndk-build.txt"
+          git add -A -f logs
           git commit -m "logs del run $GITHUB_RUN_ID (fallido)" || true
           git push origin HEAD:ci-logs --force
 
