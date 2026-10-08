@@ -74,6 +74,21 @@ jobs:
           sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;${NDK_VERSION}"
           sdkmanager --list_installed | grep -i ndk
 
+      # system.c incluye "_build_info.h", que en local generan los scripts de
+      # PowerShell (build_engine_android.ps1). vril-engine/build/ esta en
+      # .gitignore, asi que en CI hay que crearlo antes de ndk-build.
+      - name: Generar _build_info.h
+        run: |
+          set -eux
+          mkdir -p vril-engine/build/android
+          SHORT_SHA="$(printf '%s' "${GITHUB_SHA}" | cut -c1-7)"
+          cat > vril-engine/build/android/_build_info.h <<EOF_BUILD_INFO
+          #define GIT_HASH "${SHORT_SHA}"
+          #define GIT_BRANCH "${GITHUB_REF_NAME}"
+          #define BUILD_DATE "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          EOF_BUILD_INFO
+          cat vril-engine/build/android/_build_info.h
+
       - name: Compilar motor nativo (ndk-build, arm64-v8a)
         id: ndk
         working-directory: vril-engine/source/platform/android
