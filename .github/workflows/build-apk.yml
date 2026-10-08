@@ -36,7 +36,7 @@ permissions:
 
 env:
   NDK_VERSION: 28.2.13676358
-  APK_BASENAME: NZP-Android-2.3.6
+  APK_BASENAME: NZP-Android-2.3.7
 
 jobs:
   build:
@@ -224,21 +224,24 @@ jobs:
         run: |
           set -eux
           TAG="${GITHUB_REF_NAME}"
-          if [ -z "$TAG" ] || [ "$TAG" = "main" ]; then TAG="v2.3.6"; fi
+          if [ -z "$TAG" ] || [ "$TAG" = "main" ]; then TAG="v2.3.7"; fi
           # Si la release ya existe (recompilacion del mismo tag) se sustituye
           # el APK en lugar de fallar.
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" out/*.apk --clobber
           else
             gh release create "$TAG" out/*.apk \
-              --title "NZ:P Android 2.3.6" \
+              --title "NZ:P Android 2.3.7" \
               --notes "APK generado automaticamente por GitHub Actions.
 
-          - Version: 2.3.6 (versionCode 236)
+          - Version: 2.3.7 (versionCode 237)
           - ABI: arm64-v8a
           - Mapas de Tranzit (Green Run) y Town incluidos en los assets
           - Tranzit: mapa ampliado x5.8 en superficie (290 x 290 m,
             ~83.800 m2) y niebla abierta de 36 m a 97 m de visibilidad
+          - Tranzit: segundas plantas transitables (pajar del granero
+            y azotea del Diner) con nodos de IA para que los zombies
+            tambien suban
           - El motor escribe un registro de cada sesion en
             Descargas/NZP_Logs/nzp-log-AAAAMMDD-HHMMSS.txt
             (imprescindible para diagnosticar los errores de Tranzit)
