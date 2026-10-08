@@ -79,15 +79,37 @@ jobs:
       # .gitignore, asi que en CI hay que crearlo antes de ndk-build.
       - name: Compilar QuakeC (progs.dat)
         run: |
-          set -eux
+          set -ux
           # OJO: android-app/.../base/nzp/progs.dat es un ARTEFACTO GENERADO.
           # Si no se recompila aqui, cualquier cambio en quakec/source/** llega
           # al APK solo si alguien reconstruye y commitea el .dat a mano.
-          chmod +x quakec/bin/fteqcc-cli-lin quakec/tools/qc-compiler-gnu.sh
-          python3 quakec/bin/qc_hash_generator.py \
-            -i quakec/tools/asset_conversion_table.csv \
-            -o quakec/source/server/hash_table.qc
-          (cd quakec && ./bin/fteqcc-cli-lin -O3 -Ono-compound_jumps -Wall -srcfile progs/ssqc.src)
+          # Todo el detalle se vuelca a /tmp/ci-logs/quakec.txt, que el paso
+          # de diagnostico publica en la rama ci-logs si el build falla.
+          mkdir -p /tmp/ci-logs quakec/build/standard
+          {
+            echo "== entorno =="
+            uname -a
+            python3 --version
+            echo
+            echo "== bin/ =="
+            ls -l quakec/bin/ || true
+            echo
+            echo "== tabla hash =="
+            python3 quakec/bin/qc_hash_generator.py \
+              -i quakec/tools/asset_conversion_table.csv \
+              -o quakec/source/server/hash_table.qc
+            echo "hash exit=$?"
+            echo
+            echo "== fteqcc =="
+            chmod +x quakec/bin/fteqcc-cli-lin || true
+            (cd quakec && ./bin/fteqcc-cli-lin -O3 -Ono-compound_jumps -Wall -srcfile progs/ssqc.src)
+            echo "fteqcc exit=$?"
+            echo
+            echo "== salida =="
+            ls -l quakec/build/standard/ || true
+          } > /tmp/ci-logs/quakec.txt 2>&1 || true
+          cat /tmp/ci-logs/quakec.txt
+          test -s quakec/build/standard/progs.dat
           cp quakec/build/standard/progs.dat \
              android-app/app/src/main/assets/base/nzp/progs.dat
           ls -l android-app/app/src/main/assets/base/nzp/progs.dat
@@ -175,6 +197,8 @@ jobs:
           } > "$D/diagnostico.txt" 2>&1
           cat /tmp/ci-logs/ndk-build.txt > "$D/ndk-build.txt" 2>/dev/null \
             || echo "(el paso de ndk-build no dejo log)" > "$D/ndk-build.txt"
+          cat /tmp/ci-logs/quakec.txt > "$D/quakec.txt" 2>/dev/null \
+            || echo "(el paso de QuakeC no dejo log)" > "$D/quakec.txt"
           git add -A -f logs
           git commit -m "logs del run $GITHUB_RUN_ID (fallido)" || true
           git push origin HEAD:ci-logs --force
