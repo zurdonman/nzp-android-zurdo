@@ -75,15 +75,17 @@ jobs:
           sdkmanager --list_installed | grep -i ndk
 
       - name: Compilar motor nativo (ndk-build, arm64-v8a)
+        id: ndk
         working-directory: vril-engine/source/platform/android
         run: |
-          set -eux
+          set -ux
+          mkdir -p /tmp/ci-logs
           "$ANDROID_HOME/ndk/${NDK_VERSION}/ndk-build" \
             NDK_PROJECT_PATH=. \
             APP_BUILD_SCRIPT=jni/Android.mk \
             NDK_APPLICATION_MK=jni/Application.mk \
-            -j"$(nproc)"
-          ls -l libs/arm64-v8a/
+            -j"$(nproc)" 2>&1 | tee /tmp/ci-logs/ndk-build.log
+          exit "${PIPESTATUS[0]}"
 
       - name: Copiar librerias nativas al proyecto Android
         run: |
@@ -108,6 +110,29 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon --stacktrace
           ls -l app/build/outputs/apk/debug/
+
+      # Diagnostico: el sandbox de desarrollo no puede descargar los logs de
+      # Actions (results-receiver.actions.githubusercontent.com), asi que ante
+      # un fallo se vuelcan a la rama ci-logs del propio repositorio, que SI es
+      # legible con un simple git fetch.
+      - name: Publicar logs de build en la rama ci-logs
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -ux
+          mkdir -p /tmp/ci-logs
+          git config user.name  "ci-bot"
+          git config user.email "ci-bot@users.noreply.github.com"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git fetch --depth=1 origin ci-logs || true
+          git checkout -B ci-logs || true
+          rm -rf logs
+          mkdir -p "logs/run-$GITHUB_RUN_ID"
+          cp /tmp/ci-logs/* "logs/run-$GITHUB_RUN_ID/" 2>/dev/null || true
+          git add -A logs
+          git commit -m "logs del run $GITHUB_RUN_ID (fallido)" || true
+          git push origin HEAD:ci-logs --force
 
       - name: Empaquetar APK con nombre de version
         run: |
