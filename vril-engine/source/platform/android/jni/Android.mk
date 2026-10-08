@@ -41,6 +41,28 @@ SDL2_ROOT    := $(NZP_ROOT)/sdl2-src/SDL-release-2.32.10
 SDL_MIXER    := $(NZP_ROOT)/sdl2-src/SDL_mixer-release-2.8.2
 
 # ---------------------------------------------------------------------------
+# VR OpenXR (OPCIONAL).
+#
+# third_party/ esta en .gitignore: en un clon limpio (o en CI) el SDK de
+# OpenXR NO esta disponible. Todo el codigo VR (vr/vr_openxr.c, vr_openxr.h y
+# los usos en sys_sdl.c, in_sdl.c, gl_vidsdl.c y gl_rmain.c) esta envuelto en
+# #ifdef NZP_VR_OPENXR, asi que basta con no definir la macro para que el
+# motor se compile identico pero en modo 2D.
+#
+# Cuando third_party/OpenXR-SDK SI existe (build local en Windows) se activa
+# exactamente la misma configuracion de siempre: macro definida, includes del
+# SDK y enlazado contra libopenxr_loader.so. CERO cambios de comportamiento.
+# ---------------------------------------------------------------------------
+OPENXR_ROOT  := $(NZP_ROOT)/third_party/OpenXR-SDK
+OPENXR_BUILD := $(OPENXR_ROOT)/build-android
+VR_LIB       := $(wildcard $(OPENXR_BUILD)/src/loader/libopenxr_loader.so)
+ifneq ($(VR_LIB),)
+  VR_AVAILABLE := yes
+else
+  VR_AVAILABLE := no
+endif
+
+# ---------------------------------------------------------------------------
 # 1) SDL2 -- prebuilt compartido (libSDL2.so, 1.62 MB, arm64-v8a)
 #    ndk-build resuelve LOCAL_SRC_FILES relativo a LOCAL_PATH (jni/), por eso
 #    la ruta va con "../prebuilt/..." y NO con la variable absoluta
@@ -121,13 +143,18 @@ LOCAL_C_INCLUDES := \
 	$(PLATFORM_DIR) \
 	$(PLATFORM_DIR)/gl \
 	$(PLATFORM_DIR)/vr \
-	$(NZP_ROOT)/third_party/OpenXR-SDK/include \
-	$(NZP_ROOT)/third_party/OpenXR-SDK/build-android/include \
 	$(ENGINE_BUILD) \
 	$(SDL2_ROOT)/include \
 	$(SDL_MIXER)/include
 
-LOCAL_SHARED_LIBRARIES := SDL2 openxr_loader
+ifeq ($(VR_AVAILABLE),yes)
+  LOCAL_CFLAGS += -DNZP_VR_OPENXR
+  LOCAL_C_INCLUDES += $(OPENXR_ROOT)/include $(OPENXR_BUILD)/include
+  LOCAL_SHARED_LIBRARIES := SDL2 openxr_loader
+else
+  $(warning [Android.mk] third_party/OpenXR-SDK no encontrado: compilando SIN VR (NZP_VR_OPENXR no definido). El juego funciona identico en modo 2D.)
+  LOCAL_SHARED_LIBRARIES := SDL2
+endif
 LOCAL_STATIC_LIBRARIES := SDL2_mixer
 
 # GLES 1.1 (Common profile) + audio nativo + log + headers JNI + EGL (VR) + zlib (pk3/zip usermaps).
@@ -139,8 +166,11 @@ include $(BUILD_SHARED_LIBRARY)
 # 4) libopenxr_loader.so prebuilt (third_party/OpenXR-SDK/build-android).
 #    Se enlaza contra libmain.so (LOCAL_SHARED_LIBRARIES de arriba) y ndk-build
 #    lo copia a libs/arm64-v8a/ para que el APK lo empaquete.
+#    Solo se declara si el SDK esta presente (ver "VR OpenXR (opcional)").
 # ---------------------------------------------------------------------------
+ifeq ($(VR_AVAILABLE),yes)
 include $(CLEAR_VARS)
 LOCAL_MODULE := openxr_loader
-LOCAL_SRC_FILES := $(NZP_ROOT)/third_party/OpenXR-SDK/build-android/src/loader/libopenxr_loader.so
+LOCAL_SRC_FILES := $(VR_LIB)
 include $(PREBUILT_SHARED_LIBRARY)
+endif

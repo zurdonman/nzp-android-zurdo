@@ -40,8 +40,7 @@ APP_CFLAGS := \
 	-DPLATFORM_SUPPORTS_GYRO \
 	-DPLATFORM_SUPPORTS_RUMBLE \
 	-DPLATFORM_SUPPORTS_LIGHTBAR \
-	-DNZP_MENU_COOP \
-	-DNZP_VR_OPENXR
+	-DNZP_MENU_COOP
 
 # ---------------------------------------------------------------------------
 # SDL2_mixer: activar SOLO los decodificadores que se compilan.
@@ -55,6 +54,10 @@ APP_CPPFLAGS := \
 
 # Silenciar los miles de avisos del motor (codigo Quake de 1997 + clang nuevo).
 APP_CFLAGS += -Wno-everything
+
+# NOTA: -DNZP_VR_OPENXR NO va aqui. Lo anade jni/Android.mk SOLO si el SDK de
+# OpenXR (third_party/OpenXR-SDK) esta presente, para que un clon limpio pueda
+# compilar en modo 2D. Ver el bloque "VR OpenXR (opcional)" de Android.mk.
 
 # Los .so del motor se generan ya stripped por ndk-build en release.
 APP_STRIP_MODE := --strip-unneeded

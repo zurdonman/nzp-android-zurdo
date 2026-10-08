@@ -557,6 +557,8 @@ models/pu/pack!.mdl
 models/pu/perkbottle!.mdl
 models/pu/points!.mdl
 models/pu/x2!.mdl
+models/skullball/pedestal.mdl
+models/skullball/skull.mdl
 models/sprites/explosion.spr
 models/sprites/flame_main2.spr
 models/sprites/flamer.spr
