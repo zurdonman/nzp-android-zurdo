@@ -279,22 +279,78 @@ float(entity sp) Tranzit_IsSpawnerNearAnyPlayer =
 	return false;
 };
 
+// ---------------------------------------------------------------------------
+// 2b. DIAGNOSTICO Y SALVAGUARDA DE SPAWN
+//
+// Vuelca al log (Descargas/NZP_Logs) la situacion real del jugador durante los
+// primeros segundos de partida y lo reubica si aparece dentro de un solido o
+// por debajo del suelo (el suelo de Green Run esta en Z=0 y el jugador apoya
+// con el origen en Z=32, asi que un origen por debajo de Z=8 es siempre un
+// error y significa que esta enterrado).
+// ---------------------------------------------------------------------------
+void() tranzit_spawn_guard =
+{
+	entity pl = find(world, classname, "player");
+	entity sp1 = find(world, classname, "info_player_1_spawn");
+
+	while (pl != world) {
+		float verbose = (time < 8.0);
+
+		if (verbose) {
+		bprint(PRINT_HIGH, "[TRANZIT] jugador origin=");
+		bprint(PRINT_HIGH, vtos(pl.origin));
+		bprint(PRINT_HIGH, " vel=");
+		bprint(PRINT_HIGH, vtos(pl.velocity));
+		bprint(PRINT_HIGH, " z=");
+		bprint(PRINT_HIGH, ftos(pl.origin_z));
+		bprint(PRINT_HIGH, " onground=");
+		bprint(PRINT_HIGH, ftos(pl.flags & FL_ONGROUND));
+		bprint(PRINT_HIGH, " movetype=");
+		bprint(PRINT_HIGH, ftos(pl.movetype));
+		bprint(PRINT_HIGH, " solid=");
+		bprint(PRINT_HIGH, ftos(pl.solid));
+		bprint(PRINT_HIGH, " health=");
+		bprint(PRINT_HIGH, ftos(pl.health));
+		bprint(PRINT_HIGH, " downed=");
+		bprint(PRINT_HIGH, ftos(pl.downed));
+		bprint(PRINT_HIGH, " spectator=");
+		bprint(PRINT_HIGH, ftos(pl.is_spectator));
+		bprint(PRINT_HIGH, " pc=");
+		bprint(PRINT_HIGH, ftos(pointcontents(pl.origin)));
+		bprint(PRINT_HIGH, " | spawn1=");
+		if (sp1 != world)
+			bprint(PRINT_HIGH, vtos(sp1.origin));
+		else
+			bprint(PRINT_HIGH, "NO ENCONTRADO");
+		bprint(PRINT_HIGH, "\n");
+		}
+
+		// Salvaguarda: origen fuera del rango jugable (enterrado o caido por
+		// debajo del suelo) -> reubicar en el spawn y avisar siempre.
+		if (!pl.is_spectator && pl.health > 0 &&
+			(pl.origin_z < 8 || pl.origin_z > 900) && sp1 != world) {
+			setorigin(pl, sp1.origin + '0 0 2');
+			pl.velocity = '0 0 0';
+			pl.flags = pl.flags - (pl.flags & FL_ONGROUND);
+			bprint(PRINT_HIGH, "[TRANZIT] jugador fuera de rango z=");
+			bprint(PRINT_HIGH, ftos(pl.origin_z));
+			bprint(PRINT_HIGH, " -> reubicado en spawn\n");
+		}
+
+		pl = find(pl, classname, "player");
+	}
+};
+
 void() tranzit_director_think =
 {
 	entity pl, sp, z;
 	float changed = false;
 	float active_count = 0;
 
-	// 1. Avisar al jugador cuando entra en una nueva zona de Green Run
-	pl = find(world, classname, "player");
-	while (pl != world) {
-		string zname = Tranzit_GetZoneName(pl.origin);
-		if (pl.netname != zname) {
-			pl.netname = zname;
-			centerprint(pl, strcat("[ ", strcat(zname, " ]\n")));
-		}
-		pl = find(pl, classname, "player");
-	}
+	// 1. Salvaguarda de spawn: si el jugador aparece enterrado o se cae por
+	//    debajo del suelo, se le recoloca. El volcado de datos solo se imprime
+	//    durante los primeros 8 segundos para no ensuciar el log.
+	tranzit_spawn_guard();
 
 	// 2. Activar spawners desbloqueados cercanos al jugador y pausar los lejanos
 	sp = nextent(world);
@@ -385,6 +441,12 @@ void() tranzit_director_think =
 
 void() func_tranzit_director =
 {
+	// Solo existe dentro de tranzit.bsp, asi que es seguro registrar esto
+	// antes de comprobar el nombre del mapa.
+	bprint(PRINT_HIGH, "[TRANZIT] director encontrado, mapname=");
+	bprint(PRINT_HIGH, mapname);
+	bprint(PRINT_HIGH, "\n");
+
 	if (mapname != "tranzit") {
 		remove(self);
 		return;
@@ -394,4 +456,6 @@ void() func_tranzit_director =
 	self.movetype = MOVETYPE_NONE;
 	self.think = tranzit_director_think;
 	self.nextthink = time + 2.0;
+
+	bprint(PRINT_HIGH, "[TRANZIT] director activo\n");
 };
