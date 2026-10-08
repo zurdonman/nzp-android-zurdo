@@ -36,7 +36,7 @@ permissions:
 
 env:
   NDK_VERSION: 28.2.13676358
-  APK_BASENAME: NZP-Android-2.3.4
+  APK_BASENAME: NZP-Android-2.3.5
 
 jobs:
   build:
@@ -77,6 +77,21 @@ jobs:
       # system.c incluye "_build_info.h", que en local generan los scripts de
       # PowerShell (build_engine_android.ps1). vril-engine/build/ esta en
       # .gitignore, asi que en CI hay que crearlo antes de ndk-build.
+      - name: Compilar QuakeC (progs.dat)
+        run: |
+          set -eux
+          # OJO: android-app/.../base/nzp/progs.dat es un ARTEFACTO GENERADO.
+          # Si no se recompila aqui, cualquier cambio en quakec/source/** llega
+          # al APK solo si alguien reconstruye y commitea el .dat a mano.
+          chmod +x quakec/bin/fteqcc-cli-lin quakec/tools/qc-compiler-gnu.sh
+          python3 quakec/bin/qc_hash_generator.py \
+            -i quakec/tools/asset_conversion_table.csv \
+            -o quakec/source/server/hash_table.qc
+          (cd quakec && ./bin/fteqcc-cli-lin -O3 -Ono-compound_jumps -Wall -srcfile progs/ssqc.src)
+          cp quakec/build/standard/progs.dat \
+             android-app/app/src/main/assets/base/nzp/progs.dat
+          ls -l android-app/app/src/main/assets/base/nzp/progs.dat
+
       - name: Generar _build_info.h
         run: |
           set -eux
@@ -185,17 +200,17 @@ jobs:
         run: |
           set -eux
           TAG="${GITHUB_REF_NAME}"
-          if [ -z "$TAG" ] || [ "$TAG" = "main" ]; then TAG="v2.3.4"; fi
+          if [ -z "$TAG" ] || [ "$TAG" = "main" ]; then TAG="v2.3.5"; fi
           # Si la release ya existe (recompilacion del mismo tag) se sustituye
           # el APK en lugar de fallar.
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" out/*.apk --clobber
           else
             gh release create "$TAG" out/*.apk \
-              --title "NZ:P Android 2.3.4" \
+              --title "NZ:P Android 2.3.5" \
               --notes "APK generado automaticamente por GitHub Actions.
 
-          - Version: 2.3.4 (versionCode 234)
+          - Version: 2.3.5 (versionCode 235)
           - ABI: arm64-v8a
           - Mapas de Tranzit (Green Run) y Town incluidos en los assets
           - El motor escribe un registro de cada sesion en
