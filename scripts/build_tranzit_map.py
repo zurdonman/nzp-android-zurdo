@@ -1955,12 +1955,18 @@ def compile_bsp30(
         boxes: List[Tuple[float, float, float, float, float, float]],
         bounds: Tuple[float, float, float, float, float, float],
         depth: int = 0,
-    ) -> int:
+    ):
         """Arbol de clipnodes con seleccion de plano por SAH (Surface Area Heuristic).
 
         Elegir el plano que menos cajas atraviesa (en lugar del mas cercano al
         centro) reduce los clipnodes de ~19.000 a ~2.300 por hull, lo que permite
         muchisimo mas detalle geometrico sin superar MAX_MAP_CLIPNODES (32767).
+
+        NO escribe en `clipnodes`: devuelve un arbol en memoria
+            CONTENTS_SOLID / CONTENTS_EMPTY (int)  -> hoja
+            [planenum, hijo_front, hijo_back]      -> nodo
+        para que emit_clip_tree() lo serialice en PRE-ORDEN (requisito del motor,
+        ver el docstring de emit_clip_tree).
         """
         x0, y0, z0, x1, y1, z1 = bounds
         eps = 0.05
@@ -2018,13 +2024,49 @@ def compile_bsp30(
 
         c_front = build_clip_kdtree(active, tuple(b_front), depth + 1)
         c_back = build_clip_kdtree(active, tuple(b_back), depth + 1)
-        if c_front == c_back:
+        # Solo se colapsan hojas identicas: si ambos hijos son el mismo contenido
+        # el nodo sobra. Nunca se colapsan subarboles (seria un grafo, y al
+        # serializar se duplicarian nodos sin control).
+        if isinstance(c_front, int) and c_front == c_back:
             return c_front
 
         pnum = get_plane_idx(best_axis, best_coord)
-        node_idx = len(clipnodes)
-        clipnodes.append((pnum, c_front, c_back))
-        return node_idx
+        return [pnum, c_front, c_back]
+
+    def emit_clip_tree(tree) -> int:
+        """Serializa el arbol en LUMP_CLIPNODES en PRE-ORDEN (padre antes que hijos).
+
+        OBLIGATORIO: el motor comprueba en SV_HullPointContents
+
+            if (num < hull->firstclipnode || num > hull->lastclipnode)
+                Sys_Error ("bad node number");
+
+        y hull->firstclipnode es el headnode del hull (gl_model.c, bucle de
+        submodelos). Es decir: la raiz de cada arbol de clipnodes TIENE que ser
+        el indice MAS BAJO de su bloque. Emitir en post-orden (como se hacia
+        antes) dejaba la raiz con el indice mas alto y el mapa abortaba con
+        "bad node number" nada mas conectarse el cliente.
+        """
+        # Hoja: el valor de contenido ya es un indice valido (< 0).
+        if isinstance(tree, int):
+            return tree
+
+        root = len(clipnodes)
+        clipnodes.append((tree[0], CONTENTS_EMPTY, CONTENTS_EMPTY))
+        stack = [(tree, root)]
+        while stack:
+            node, idx = stack.pop()
+            for slot in (1, 0):
+                child = node[1 + slot]
+                if isinstance(child, int):
+                    cidx = child
+                else:
+                    cidx = len(clipnodes)
+                    clipnodes.append((child[0], CONTENTS_EMPTY, CONTENTS_EMPTY))
+                    stack.append((child, cidx))
+                _pn, c0, c1 = clipnodes[idx]
+                clipnodes[idx] = (_pn, cidx, c1) if slot == 0 else (_pn, c0, cidx)
+        return root
 
     def build_hull_for_brushes(brushes: List[BoxBrush], hx: float, hy: float, hz: float) -> int:
         expanded = [
@@ -2032,13 +2074,13 @@ def compile_bsp30(
             for b in brushes
         ]
         before = len(clipnodes)
-        idx = build_clip_kdtree(expanded, (-3200.0, -3200.0, -1024.0, 3200.0, 3200.0, 1024.0))
+        tree = build_clip_kdtree(expanded, (-3200.0, -3200.0, -1024.0, 3200.0, 3200.0, 1024.0))
+        # Un hull vacio se fuerza a nodo real (comportamiento anterior): algunos
+        # puntos del motor esperan un headnode >= 0.
+        if isinstance(tree, int):
+            tree = [get_plane_idx(2, -2048.0), tree, tree]
+        idx = emit_clip_tree(tree)
         print(f"[INFO]   Hull({hx},{hy},{hz}): {len(clipnodes) - before} clipnodes")
-        if idx < 0:
-            pnum = get_plane_idx(2, -2048.0)
-            idx = len(clipnodes)
-            clipnodes.append((pnum, idx_val := idx, CONTENTS_EMPTY))
-            clipnodes[-1] = (pnum, CONTENTS_EMPTY, CONTENTS_EMPTY)
         return idx
 
     # 4. Construir LUMP_NODES y LUMP_LEAFS para el mundo (model 0)
@@ -2440,6 +2482,46 @@ def compile_bsp30(
             f"[ERROR] {len(clipnodes)} clipnodes supera MAX_MAP_CLIPNODES "
             f"({MAX_MAP_CLIPNODES}) del motor; hay que reducir brushes."
         )
+
+    # --- Validacion de la invariante de headnodes ---------------------------
+    # SV_HullPointContents (world.c) aborta con "bad node number" en cuanto
+    # encuentra un indice menor que hull->firstclipnode, y firstclipnode es el
+    # headnode del hull (gl_model.c). Por tanto la raiz de CADA arbol (tanto de
+    # clipnodes como de nodes para el hull 0) tiene que ser el indice MAS BAJO
+    # de los nodos que cuelgan de ella. Esta comprobacion evita que una futura
+    # optimizacion del arbol reintroduzca el fallo sin que se note al compilar.
+    def reachable(first: int, table):
+        seen = set()
+        stack = [first]
+        while stack:
+            i = stack.pop()
+            if i < 0 or i in seen or i >= len(table):
+                continue
+            seen.add(i)
+            for c in (table[i][1], table[i][2]):
+                if c >= 0:
+                    stack.append(c)
+        return seen
+
+    for _mi, _m in enumerate(models_bin):
+        _vals = struct.unpack("<9f7i", _m)
+        _hn = _vals[9:13]
+        for _h in range(4):
+            _root = _hn[_h]
+            if _root < 0:
+                continue
+            if _h == 0:
+                _tbl = [(nd[0], nd[1], nd[2]) for nd in nodes]
+            else:
+                _tbl = clipnodes
+            _set = reachable(_root, _tbl)
+            _bad = sorted(i for i in _set if i < _root)
+            if _bad:
+                raise SystemExit(
+                    f"[ERROR] modelo {_mi} hull {_h}: headnode={_root} pero "
+                    f"{len(_bad)} nodos cuelgan por debajo (min={_bad[0]}). "
+                    f"El motor abortaria con 'bad node number'."
+                )
     lump_clipnodes = b"".join(struct.pack("<ihh", cn[0], cn[1], cn[2]) for cn in clipnodes)
     lump_leafs = b"".join(leafs)
     lump_marksurfaces = b"".join(struct.pack("<H", m) for m in marksurfaces)
