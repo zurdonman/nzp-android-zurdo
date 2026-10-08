@@ -31,7 +31,7 @@ float	speedscale;		// for top sky and bottom sky
 
 int	    skytexorder[5] = {0,2,1,3,4};
 int	    skyimage[5]; // Where sky images are stored
-char	skybox_name[32] = ""; //name of current skybox, or "" if no skybox
+char	skybox_name[64] = ""; //name of current skybox, or "" if no skybox
 qboolean sky_is_layered;
 // cut off down for half skybox
 char	*suf[5] = {"rt", "bk", "lf", "ft", "up" };
@@ -362,14 +362,34 @@ void R_DrawSkyChain (msurface_t *s)
 Sky_LoadSkyBox
 ==================
 */
+static void Sky_NormalizeName(const char *in, char *out, size_t out_size)
+{
+	const char *p = in ? in : "";
+	char *dot;
+
+	if (!strncasecmp(p, "gfx/env/", 8) || !strncasecmp(p, "gfx\\env\\", 8))
+		p += 8;
+	while (*p == '/' || *p == '\\')
+		p++;
+
+	snprintf(out, out_size, "%s", p);
+	dot = strrchr(out, '.');
+	if (dot && (!strcasecmp(dot, ".png") || !strcasecmp(dot, ".tga") || !strcasecmp(dot, ".jpg")))
+		*dot = '\0';
+}
+
 //char	*suf[6] = {"rt", "bk", "lf", "ft", "up", "dn"};
 void Sky_LoadSkyBox(char* name)
 {
-	if (strcmp(skybox_name, name) == 0)
+	char clean_name[64];
+
+	Sky_NormalizeName(name, clean_name, sizeof(clean_name));
+
+	if (strcmp(skybox_name, clean_name) == 0)
 		return; //no change
 
 	//turn off skybox if sky is set to ""
-	if (name[0] == '0') {
+	if (clean_name[0] == '0') {
 		skybox_name[0] = 0;
 		return;
 	}
@@ -379,11 +399,14 @@ void Sky_LoadSkyBox(char* name)
     {
         int mark = Hunk_LowMark ();
 
-		skyimage[i] = Image_LoadImage (va("gfx/env/%s%s", name, suf[i]), IMAGE_TGA | IMAGE_PNG | IMAGE_JPG, 0, false, false);
+		skyimage[i] = Image_LoadImage (va("gfx/env/%s%s", clean_name, suf[i]), IMAGE_TGA | IMAGE_PNG | IMAGE_JPG, 0, false, false);
 		if (skyimage[i] < 0) {
-			skyimage[i] = Image_LoadImage (va("gfx/env/%s_%s", name, suf[i]), IMAGE_TGA | IMAGE_PNG | IMAGE_JPG, 0, false, false);
+			skyimage[i] = Image_LoadImage (va("gfx/env/%s_%s", clean_name, suf[i]), IMAGE_TGA | IMAGE_PNG | IMAGE_JPG, 0, false, false);
+			if (skyimage[i] < 0 && clean_name[0] != '\0') {
+				skyimage[i] = Image_LoadImage (va("gfx/env/%s", clean_name), IMAGE_TGA | IMAGE_PNG | IMAGE_JPG, 0, false, false);
+			}
 			if (skyimage[i] < 0) {
-				Con_Printf("Sky: %s[%s] not found, used std\n", name, suf[i]);
+				Con_Printf("Sky: %s[%s] not found, used std\n", clean_name, suf[i]);
 				skyimage[i] = Image_LoadImage (va("gfx/env/skybox%s", suf[i]), IMAGE_TGA | IMAGE_PNG | IMAGE_JPG, 0, false, false);
 				if(skyimage[i] < 0) {
 					Sys_Error("STD SKY NOT FOUND!");
@@ -394,11 +417,14 @@ void Sky_LoadSkyBox(char* name)
     }
 
 	int mark = Hunk_LowMark ();
-	skyimage[4] = Image_LoadImage (va("gfx/env/%sup", name), IMAGE_TGA | IMAGE_PNG | IMAGE_JPG, 0, false, false);
+	skyimage[4] = Image_LoadImage (va("gfx/env/%sup", clean_name), IMAGE_TGA | IMAGE_PNG | IMAGE_JPG, 0, false, false);
 	if (skyimage[4] < 0) {
-		skyimage[4] = Image_LoadImage (va("gfx/env/%s_up", name), IMAGE_TGA | IMAGE_PNG | IMAGE_JPG, 0, false, false);
+		skyimage[4] = Image_LoadImage (va("gfx/env/%s_up", clean_name), IMAGE_TGA | IMAGE_PNG | IMAGE_JPG, 0, false, false);
+		if (skyimage[4] < 0 && clean_name[0] != '\0') {
+			skyimage[4] = Image_LoadImage (va("gfx/env/%s", clean_name), IMAGE_TGA | IMAGE_PNG | IMAGE_JPG, 0, false, false);
+		}
 		if (skyimage[4] < 0) {
-			Con_Printf("Sky: %s[%s] not found, used std\n", name, suf[4]);
+			Con_Printf("Sky: %s[%s] not found, used std\n", clean_name, suf[4]);
 			skyimage[4] = Image_LoadImage (va("gfx/env/skybox%s", suf[4]), IMAGE_TGA | IMAGE_PNG | IMAGE_JPG, 0, false, false);
 			if (skyimage[4] < 0) {
 				Sys_Error("STD SKY NOT FOUND!");
@@ -407,7 +433,7 @@ void Sky_LoadSkyBox(char* name)
 	}
 	Hunk_FreeToLowMark (mark);
 
-	strcpy(skybox_name, name);
+	snprintf(skybox_name, sizeof(skybox_name), "%s", clean_name);
 }
 
 /*

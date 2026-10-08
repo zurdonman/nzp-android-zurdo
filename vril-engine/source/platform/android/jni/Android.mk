@@ -130,8 +130,8 @@ LOCAL_C_INCLUDES := \
 LOCAL_SHARED_LIBRARIES := SDL2 openxr_loader
 LOCAL_STATIC_LIBRARIES := SDL2_mixer
 
-# GLES 1.1 (Common profile) + audio nativo + log + headers JNI + EGL (VR).
-LOCAL_LDLIBS := -lGLESv1_CM -lGLESv2 -lEGL -lOpenSLES -llog -landroid -ldl -lm
+# GLES 1.1 (Common profile) + audio nativo + log + headers JNI + EGL (VR) + zlib (pk3/zip usermaps).
+LOCAL_LDLIBS := -lGLESv1_CM -lGLESv2 -lEGL -lOpenSLES -llog -landroid -ldl -lm -lz
 
 include $(BUILD_SHARED_LIBRARY)
 

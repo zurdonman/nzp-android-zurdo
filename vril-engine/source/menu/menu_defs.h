@@ -172,12 +172,13 @@ typedef struct
 	char* 		map_thumbnail_path;
 } usermap_t;
 
-#define                 MAX_CUSTOMMAPS 64
+#define                 MAX_CUSTOMMAPS 128
 extern usermap_t        custom_maps[MAX_CUSTOMMAPS];
 extern image_t          menu_usermap_image[MAX_CUSTOMMAPS];
 extern int              num_user_maps;
 extern int              num_custom_images;
 extern int     			custom_map_pages;
+void Menu_CustomMaps_Rescan_f (void);
 
 // Currently selected map
 extern char*			current_selected_bsp;

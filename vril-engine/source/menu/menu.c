@@ -176,6 +176,7 @@ void Menu_Init (void)
 	loading_init = false;
 
 	Cmd_AddCommand ("togglemenu", Menu_ToggleMenu_f);
+	Cmd_AddCommand ("usermaps_rescan", Menu_CustomMaps_Rescan_f);
 }
 
 

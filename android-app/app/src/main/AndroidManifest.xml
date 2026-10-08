@@ -24,6 +24,11 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- NZ:P Android (zurdo): carpeta de usermaps en /sdcard/NZP/usermaps.
+         Nota: /sdcard/Android/data/com.nzpteam.nzportable/files/usermaps
+         funciona en todas las versiones de Android y Quest sin permisos extra. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
 
     <application android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
