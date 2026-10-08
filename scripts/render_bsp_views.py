@@ -395,14 +395,14 @@ class BSPScene:
 
                             # Apply Green Run distance fog ("fog" "220 1450 42 46 48")
                             if z_depth > 220.0:
-                                fog_f = min(0.88, (z_depth - 220.0) / 1450.0)
+                                fog_f = max(0.0, min(0.95, (z_depth - 700.0) / 3200.0))
                                 tr = int(tr * (1.0 - fog_f) + 42 * fog_f)
                                 tg = int(tg * (1.0 - fog_f) + 46 * fog_f)
                                 tb = int(tb * (1.0 - fog_f) + 48 * fog_f)
 
-                            fb[pidx * 3] = min(255, tr)
-                            fb[pidx * 3 + 1] = min(255, tg)
-                            fb[pidx * 3 + 2] = min(255, tb)
+                            fb[pidx * 3] = max(0, min(255, tr))
+                            fb[pidx * 3 + 1] = max(0, min(255, tg))
+                            fb[pidx * 3 + 2] = max(0, min(255, tb))
                             if texid_buf is not None:
                                 texid_buf[pidx] = ti[8] + 1
 
@@ -534,6 +534,11 @@ class BSPScene:
         return bytes(fb)
 
 
+# El mapa se genera con WORLD_SCALE_XY sobre las coordenadas de diseno:
+# las camaras estan expresadas en ese mismo espacio de diseno.
+WORLD_SCALE_XY = 2.35
+
+
 # ---------------------------------------------------------------------------
 # CAMARAS DE INSPECCION (primera persona, altura de ojos ~56u sobre el suelo)
 # ---------------------------------------------------------------------------
@@ -572,6 +577,7 @@ def main():
     scene = BSPScene(BSP_PATH)
     report_lines: List[str] = []
     for name, pos, yaw, pitch in CAMERAS:
+        pos = (pos[0] * WORLD_SCALE_XY, pos[1] * WORLD_SCALE_XY, pos[2])
         out_p = os.path.join(OUT_DIR, f"{name}.png")
         st: dict = {}
         rgb = scene.render_camera(pos, yaw, pitch, 480, 272, stats=st)

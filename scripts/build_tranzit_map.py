@@ -46,6 +46,29 @@ FULLBRIGHT_TEXTURES: Dict[str, Tuple[int, int, int]] = {
 }
 
 
+# ============================================================================
+#  ESCALA DEL MUNDO
+# ----------------------------------------------------------------------------
+#  El mapa se diseno originalmente en una parcela de 4800x4800 unidades.
+#  A escala Quake (el jugador mide 72u ~ 1.80 m -> 1 u ~ 2.5 cm) eso son solo
+#  120 x 120 m, y con la niebla tapando a 1450u la sensacion era de "todo
+#  pegado". Multiplicando X/Y por WORLD_SCALE_XY la superficie pasa de
+#  ~14.400 m2 a ~79.500 m2 (x5.5) sin anadir un solo brush: el arbol de
+#  clipnodes depende del NUMERO y la disposicion de los brushes, no de su
+#  tamano, asi que el presupuesto de colision no se mueve.
+#
+#  La altura (Z) NO se escala: los techos de 208u (~5.2 m) ya son correctos
+#  para una escala humana y estirarlos dejaria naves desproporcionadas.
+# ============================================================================
+WORLD_SCALE_XY = 2.35
+WORLD_SCALE_Z = 1.0
+
+
+def BoxBrush_LOCAL(*args, **kwargs):
+    """BoxBrush en coordenadas LOCALES del modelo (sin escala de mundo)."""
+    kwargs.setdefault("local_space", True)
+    return BoxBrush(*args, **kwargs)
+
 @dataclass
 class BoxBrush:
     xmin: float
@@ -59,6 +82,19 @@ class BoxBrush:
     tex_sides: str
     face_tex: Dict[str, str] = field(default_factory=dict)
     skip_faces: set = field(default_factory=set)
+    # Los modelos_inline construidos en coordenadas LOCALES (el autobus) no
+    # deben escalarse: su tamano va ligado al jugador, no al mundo.
+    local_space: bool = False
+
+    def __post_init__(self):
+        if self.local_space:
+            return
+        self.xmin *= WORLD_SCALE_XY
+        self.ymin *= WORLD_SCALE_XY
+        self.zmin *= WORLD_SCALE_Z
+        self.xmax *= WORLD_SCALE_XY
+        self.ymax *= WORLD_SCALE_XY
+        self.zmax *= WORLD_SCALE_Z
 
     def get_tex(self, face_tag: str) -> str:
         if face_tag in self.face_tex:
@@ -165,14 +201,20 @@ def build_tranzit_world():
     def add_ent(classname: str, origin: Optional[Tuple[float, float, float]] = None, **kwargs):
         d = {"classname": classname}
         if origin is not None:
-            d["origin"] = f"{int(origin[0])} {int(origin[1])} {int(origin[2])}"
+            d["origin"] = f"{int(origin[0] * WORLD_SCALE_XY)} {int(origin[1] * WORLD_SCALE_XY)} {int(origin[2] * WORLD_SCALE_Z)}"
         for k, v in kwargs.items():
             d[k] = str(v)
         point_entities.append(d)
 
     def add_light(x, y, z, r, g, b, radius=420.0):
-        lights.append(PointLight(float(x), float(y), float(z), float(r), float(g), float(b), float(radius)))
-        add_ent("light", (x, y, z), _light=f"{int(r)} {int(g)} {int(b)} {int(radius)}")
+        lights.append(
+            PointLight(
+                x * WORLD_SCALE_XY, y * WORLD_SCALE_XY, z * WORLD_SCALE_Z,
+                float(r), float(g), float(b),
+                float(radius) * WORLD_SCALE_XY,
+            )
+        )
+        add_ent("light", (x, y, z), _light=f"{int(r)} {int(g)} {int(b)} {int(radius * WORLD_SCALE_XY)}")
 
     def add_wall_weapon(
         name_id: str, origin: Tuple[float, float, float], yaw: int,
@@ -535,7 +577,7 @@ def build_tranzit_world():
         add_column(-1520, py, 0, 208, size=16.0, tex="brick_pillar")
 
     # Spawners exteriores de Bus Depot (se desbloquean al abrir door_depot)
-    add_ent("spawn_zombie", (-1250, -2150, 40), targetname="z_depot_ext", spawnflags="5")
+    add_ent("spawn_zombie", (-1233, -2167, 40), targetname="z_depot_ext", spawnflags="5")
     add_ent("spawn_zombie", (-1250, -1350, 40), targetname="z_depot_ext", spawnflags="5")
 
     # ========================================================================
@@ -736,8 +778,8 @@ def build_tranzit_world():
     add_light(-1700, 1560, 150, 190, 180, 160, 340)
 
     add_ent("spawn_zombie", (-1120, 2120, 40), targetname="z_diner", spawnflags="5")
-    add_ent("spawn_zombie", (-1960, 2040, 40), targetname="z_diner", spawnflags="5")
-    add_ent("spawn_zombie", (-1620, 1250, 40), targetname="z_depot_ext", spawnflags="5")
+    add_ent("spawn_zombie", (-1943, 2023, 40), targetname="z_diner", spawnflags="5")
+    add_ent("spawn_zombie", (-1637, 1233, 40), targetname="z_depot_ext", spawnflags="5")
 
     # ========================================================================
     # SECTOR CENTRAL (MAIZAL): RUINAS DE NACHT DER UNTOTEN (X[-350..+350], Y[-450..+1150])
@@ -1214,7 +1256,7 @@ def build_tranzit_world():
     add_light(-140, -1300, 180, 255, 195, 130, 420)
     add_light(-220, -2080, 185, 255, 225, 175, 450)
     add_light(420, -2080, 185, 255, 130, 60, 420)
-    add_ent("spawn_zombie", (-380, -1300, 40), targetname="z_town", spawnflags="5")
+    add_ent("spawn_zombie", (-414, -1334, 40), targetname="z_town", spawnflags="5")
     add_ent("spawn_zombie", (-380, -2180, 40), targetname="z_town", spawnflags="5")
     add_ent("spawn_zombie", (380, -2180, 40), targetname="z_town", spawnflags="5")
     add_ent("spawn_zombie", (620, -1620, 40), targetname="z_depot_ext", spawnflags="5")
@@ -1234,42 +1276,42 @@ def build_tranzit_world():
 
     bus_brushes: List[BoxBrush] = []
     # Piso y rodadura
-    bus_brushes.append(BoxBrush(0, 0, 0, 160, 112, BUS_FLOOR, "metal_floor", "m_metal_darkBlu", "bus_metal"))
+    bus_brushes.append(BoxBrush_LOCAL(0, 0, 0, 160, 112, BUS_FLOOR, "metal_floor", "m_metal_darkBlu", "bus_metal"))
     # Panel de cola y mampara delantera de la cabina
-    bus_brushes.append(BoxBrush(0, 0, BUS_FLOOR, 8, 112, BUS_ROOF, "bus_side", "bus_side", "bus_side"))
-    bus_brushes.append(BoxBrush(148, 0, BUS_FLOOR, 160, 112, BUS_ROOF, "bus_side", "bus_side", "bus_side"))
+    bus_brushes.append(BoxBrush_LOCAL(0, 0, BUS_FLOOR, 8, 112, BUS_ROOF, "bus_side", "bus_side", "bus_side"))
+    bus_brushes.append(BoxBrush_LOCAL(148, 0, BUS_FLOOR, 160, 112, BUS_ROOF, "bus_side", "bus_side", "bus_side"))
     # Laterales: chapa inferior, cintura de ventanillas, montantes y larguero
     for (sx0, sx1) in SOLID_X:
         for (sy0, sy1) in ((0.0, 6.0), (106.0, 112.0)):
-            bus_brushes.append(BoxBrush(sx0, sy0, BUS_FLOOR, sx1, sy1, BUS_BELT, "bus_side", "bus_side", "bus_side"))
-            bus_brushes.append(BoxBrush(sx0, sy0, BUS_BELT, sx1, sy1, BUS_BELT + 6, "bus_metal", "bus_metal", "bus_metal"))
+            bus_brushes.append(BoxBrush_LOCAL(sx0, sy0, BUS_FLOOR, sx1, sy1, BUS_BELT, "bus_side", "bus_side", "bus_side"))
+            bus_brushes.append(BoxBrush_LOCAL(sx0, sy0, BUS_BELT, sx1, sy1, BUS_BELT + 6, "bus_metal", "bus_metal", "bus_metal"))
     for (sx0, sx1) in PILLAR_X:
         for (sy0, sy1) in ((0.0, 6.0), (106.0, 112.0)):
-            bus_brushes.append(BoxBrush(sx0, sy0, BUS_BELT + 6, sx1, sy1, BUS_ROOF, "bus_metal", "bus_metal", "bus_metal"))
+            bus_brushes.append(BoxBrush_LOCAL(sx0, sy0, BUS_BELT + 6, sx1, sy1, BUS_ROOF, "bus_metal", "bus_metal", "bus_metal"))
     # Techo (con luz interior) y escotilla de evacuacion
-    bus_brushes.append(BoxBrush(6, 6, BUS_ROOF, 154, 106, 148, "bus_metal", "bus_metal", "bus_metal"))
-    bus_brushes.append(BoxBrush(70, 46, 148, 90, 66, 156, "bus_metal", "bus_metal", "bus_metal"))
+    bus_brushes.append(BoxBrush_LOCAL(6, 6, BUS_ROOF, 154, 106, 148, "bus_metal", "bus_metal", "bus_metal"))
+    bus_brushes.append(BoxBrush_LOCAL(70, 46, 148, 90, 66, 156, "bus_metal", "bus_metal", "bus_metal"))
     # Capo delantero, quitanieve escalonado y parachoques trasero
-    bus_brushes.append(BoxBrush(144, 8, BUS_FLOOR, 152, 104, 44, "bus_side", "bus_side", "bus_side"))
-    bus_brushes.append(BoxBrush(152, 2, 0, 157, 110, 32, "bus_metal", "bus_metal", "bus_metal"))
-    bus_brushes.append(BoxBrush(157, 10, 0, 160, 102, 22, "bus_metal", "bus_metal", "bus_metal"))
-    bus_brushes.append(BoxBrush(0, 2, 0, 5, 110, 30, "bus_metal", "bus_metal", "bus_metal"))
+    bus_brushes.append(BoxBrush_LOCAL(144, 8, BUS_FLOOR, 152, 104, 44, "bus_side", "bus_side", "bus_side"))
+    bus_brushes.append(BoxBrush_LOCAL(152, 2, 0, 157, 110, 32, "bus_metal", "bus_metal", "bus_metal"))
+    bus_brushes.append(BoxBrush_LOCAL(157, 10, 0, 160, 102, 22, "bus_metal", "bus_metal", "bus_metal"))
+    bus_brushes.append(BoxBrush_LOCAL(0, 2, 0, 5, 110, 30, "bus_metal", "bus_metal", "bus_metal"))
     # Faros delanteros y pilotos traseros (texturas emisivas)
     for by in (16.0, 84.0):
-        bus_brushes.append(BoxBrush(156, by, 34, 160, by + 14, 48, "bus_headlight", "bus_headlight", "bus_headlight"))
-        bus_brushes.append(BoxBrush(0, by, 34, 4, by + 14, 48, "bus_tail", "bus_tail", "bus_tail"))
+        bus_brushes.append(BoxBrush_LOCAL(156, by, 34, 160, by + 14, 48, "bus_headlight", "bus_headlight", "bus_headlight"))
+        bus_brushes.append(BoxBrush_LOCAL(0, by, 34, 4, by + 14, 48, "bus_tail", "bus_tail", "bus_tail"))
     # Bancos corridos y respaldos del habitaculo (a ambos lados del pasillo)
     for bxx in (34.0, 58.0, 84.0, 108.0):
-        bus_brushes.append(BoxBrush(bxx, 8, BUS_FLOOR, bxx + 20, 32, BUS_FLOOR + 18,
+        bus_brushes.append(BoxBrush_LOCAL(bxx, 8, BUS_FLOOR, bxx + 20, 32, BUS_FLOOR + 18,
                                     "carpet_64_red", "carpet_64_red", "carpet_64_red"))
-        bus_brushes.append(BoxBrush(bxx, 8, BUS_FLOOR + 18, bxx + 20, 13, BUS_FLOOR + 44,
+        bus_brushes.append(BoxBrush_LOCAL(bxx, 8, BUS_FLOOR + 18, bxx + 20, 13, BUS_FLOOR + 44,
                                     "carpet_64_red", "carpet_64_red", "carpet_64_red"))
-        bus_brushes.append(BoxBrush(bxx, 80, BUS_FLOOR, bxx + 20, 104, BUS_FLOOR + 18,
+        bus_brushes.append(BoxBrush_LOCAL(bxx, 80, BUS_FLOOR, bxx + 20, 104, BUS_FLOOR + 18,
                                     "carpet_64_red", "carpet_64_red", "carpet_64_red"))
-        bus_brushes.append(BoxBrush(bxx, 99, BUS_FLOOR + 18, bxx + 20, 104, BUS_FLOOR + 44,
+        bus_brushes.append(BoxBrush_LOCAL(bxx, 99, BUS_FLOOR + 18, bxx + 20, 104, BUS_FLOOR + 44,
                                     "carpet_64_red", "carpet_64_red", "carpet_64_red"))
     # Barra longitudinal interior para agarrarse
-    bus_brushes.append(BoxBrush(14, 54, 118, 146, 58, 124, "metal_stB", "metal_stB", "metal_stB"))
+    bus_brushes.append(BoxBrush_LOCAL(14, 54, 118, 146, 58, 124, "metal_stB", "metal_stB", "metal_stB"))
     add_submodel(
         "func_tranzit_bus",
         bus_brushes,
@@ -1577,47 +1619,47 @@ def build_tranzit_world():
     # Definimos los nodos (id 1..N) y sus enlaces bidireccionales + wayTarget en puertas
     wp_nodes: Dict[int, Tuple[int, int, int, str, List[int]]] = {
         # Bus Depot Interior (1..3) -> Puerta Depot (4) -> Exterior Bus Depot (5..6)
-        1: (-1980, -1960, 36, "", [2, 3]),
-        2: (-1980, -1760, 36, "", [1, 3]),
-        3: (-1680, -1860, 36, "", [1, 2, 4]),
-        4: (-1560, -1860, 36, "door_depot", [3, 5]),
-        5: (-1360, -1860, 36, "", [4, 6, 26]),
-        6: (-1360, -1320, 36, "", [5, 7]),
+        1: (-4653, -4606, 36, "", [2, 3]),
+        2: (-4653, -4136, 36, "", [1, 3]),
+        3: (-3948, -4371, 36, "", [1, 2, 4]),
+        4: (-3666, -4371, 36, "door_depot", [3, 5]),
+        5: (-3196, -4371, 36, "", [4, 6, 26]),
+        6: (-3196, -3102, 36, "", [5, 7]),
         # Highway Tunnel (7..9)
-        7: (-1820, -780, 36, "", [6, 8]),
-        8: (-1820, 0, 36, "", [7, 9]),
-        9: (-1820, 780, 36, "", [8, 10]),
+        7: (-4277, -1833, 36, "", [6, 8]),
+        8: (-4277, 0, 36, "", [7, 9]),
+        9: (-4277, 1833, 36, "", [8, 10]),
         # Diner Exterior (10..11), Diner Interior (12..13), Garage Interior (14..15)
-        10: (-1960, 1500, 36, "", [9, 11, 14]),
-        11: (-1120, 1500, 36, "", [10, 12, 16]),
-        12: (-1120, 1696, 36, "door_diner", [11, 13]),
-        13: (-1120, 1920, 36, "", [12]),
-        14: (-1960, 1616, 36, "door_garage", [10, 15]),
-        15: (-1960, 1920, 36, "", [14]),
+        10: (-4606, 3525, 36, "", [9, 11, 14]),
+        11: (-2632, 3525, 36, "", [10, 12, 16]),
+        12: (-2632, 3985, 36, "door_diner", [11, 13]),
+        13: (-2632, 4512, 36, "", [12]),
+        14: (-4606, 3797, 36, "door_garage", [10, 15]),
+        15: (-4606, 4512, 36, "", [14]),
         # Carretera Norte y Desvio al Maizal / Nacht Bunker (16..18)
-        16: (0, 1360, 36, "", [11, 17, 19]),
-        17: (0, 520, 36, "", [16, 18]),
-        18: (0, -120, 36, "", [17]),
+        16: (0, 3196, 36, "", [11, 17, 19]),
+        17: (0, 1222, 36, "", [16, 18]),
+        18: (0, -282, 36, "", [17]),
         # Farm Exterior (19) -> Puerta Farm (20) -> Patio Farm (21), Entrada Granero (34) y Barn Interior (22)
-        19: (1340, 1460, 36, "", [16, 20, 23]),
-        20: (1516, 1460, 36, "door_farm", [19, 21]),
-        21: (1590, 1460, 36, "", [20, 34]),
-        34: (1590, 1160, 36, "", [21, 22]),
-        22: (1960, 1160, 36, "", [34]),
+        19: (3149, 3431, 36, "", [16, 20, 23]),
+        20: (3562, 3431, 36, "door_farm", [19, 21]),
+        21: (3736, 3431, 36, "", [20, 34]),
+        34: (3736, 2726, 36, "", [21, 22]),
+        22: (4606, 2726, 36, "", [34]),
         # Carretera Este y Power Station (23..25, 33, 35)
-        23: (1340, 480, 36, "", [19, 24]),
-        24: (1360, -160, 36, "", [23, 25, 35]),
-        25: (1596, -160, 36, "door_power", [24, 33]),
-        33: (1820, -420, 36, "", [25]),
-        35: (1360, -1380, 36, "", [24, 26]),
+        23: (3149, 1128, 36, "", [19, 24]),
+        24: (3196, -376, 36, "", [23, 25, 35]),
+        25: (3750, -376, 36, "door_power", [24, 33]),
+        33: (4277, -987, 36, "", [25]),
+        35: (3196, -3243, 36, "", [24, 26]),
         # Town (Calle central 26..27, Bar 28..29, Banco 30..31, Vault Pack-a-Punch 32)
-        26: (520, -1580, 36, "", [35, 27]),
-        27: (-120, -1620, 36, "", [5, 26, 28, 30]),
-        28: (-140, -1464, 36, "door_bar", [27, 29]),
-        29: (-140, -1300, 36, "", [28]),
-        30: (-100, -1836, 36, "door_bank", [27, 31]),
-        31: (-100, -2080, 36, "", [30, 32]),
-        32: (176, -2080, 36, "door_vault", [31]),
+        26: (1222, -3713, 36, "", [35, 27]),
+        27: (-282, -3807, 36, "", [5, 26, 28, 30]),
+        28: (-329, -3440, 36, "door_bar", [27, 29]),
+        29: (-329, -3055, 36, "", [28]),
+        30: (-235, -4314, 36, "door_bank", [27, 31]),
+        31: (-235, -4888, 36, "", [30, 32]),
+        32: (413, -4888, 36, "door_vault", [31]),
     }
 
     for wid in sorted(wp_nodes.keys()):
@@ -1729,7 +1771,7 @@ def export_map_file(
         )
 
     with open(out_map_path, "w", encoding="utf-8") as f:
-        f.write('{\n"classname" "worldspawn"\n"mapversion" "220"\n"sky" "gfx/env/CloudyNightSky.png"\n"fog" "220 1450 42 46 48"\n')
+        f.write('{\n"classname" "worldspawn"\n"mapversion" "220"\n"sky" "gfx/env/CloudyNightSky.png"\n"fog" "700 3900 42 46 48"\n')
         for b in world_brushes:
             f.write(fmt_brush(b) + "\n")
         f.write("}\n")
@@ -1838,7 +1880,7 @@ def compile_bsp30(
 
     # Rejilla espacial de luces: evita recorrer todos los focos por cada muestra
     # del lightmap (con ~200 luces el coste seria prohibitivo sin esta poda).
-    LIGHT_CELL = 400.0
+    LIGHT_CELL = 400.0 * WORLD_SCALE_XY
     light_grid: Dict[Tuple[int, int], List[int]] = {}
 
     def gidx(v: float) -> int:
@@ -2084,7 +2126,8 @@ def compile_bsp30(
             for b in brushes
         ]
         before = len(clipnodes)
-        tree = build_clip_kdtree(expanded, (-3200.0, -3200.0, -1024.0, 3200.0, 3200.0, 1024.0))
+        tree = build_clip_kdtree(expanded, (-3200.0 * WORLD_SCALE_XY, -3200.0 * WORLD_SCALE_XY, -1024.0,
+                                   3200.0 * WORLD_SCALE_XY, 3200.0 * WORLD_SCALE_XY, 1024.0))
         # Un hull vacio se fuerza a nodo real (comportamiento anterior): algunos
         # puntos del motor esperan un headnode >= 0.
         if isinstance(tree, int):
@@ -2394,8 +2437,8 @@ def compile_bsp30(
     models_bin.append(
         struct.pack(
             "<9f7i",
-            -2500.0, -2500.0, -128.0,
-            2500.0, 2500.0, 560.0,
+            -2500.0 * WORLD_SCALE_XY, -2500.0 * WORLD_SCALE_XY, -128.0 * WORLD_SCALE_Z,
+            2500.0 * WORLD_SCALE_XY, 2500.0 * WORLD_SCALE_XY, 560.0 * WORLD_SCALE_Z,
             0.0, 0.0, 0.0,
             world_headnode0, w_h1, w_h2, w_h3,
             world_visleafs,
@@ -2452,7 +2495,7 @@ def compile_bsp30(
         '"compiler" "NZP-Tranzit-Builder 1.0"',
         '"mapversion" "220"',
         '"sky" "gfx/env/CloudyNightSky.png"',
-        '"fog" "220 1450 42 46 48"',
+        '"fog" "700 3900 42 46 48"',
         '"r_skycolor" "42 46 48"',
         '"chaptertitle" "GREEN RUN (TRANZIT)"',
         '"location" "Hanford Site, Washington"',
