@@ -338,7 +338,7 @@ def build_tranzit_world():
     # las zonas exteriores alejadas de las estaciones queden completamente negras.
     for mx in range(-2100, 2400, 700):
         for my in range(-2100, 2400, 700):
-            add_light(mx, my, 420, 60, 68, 84, 1000)
+            add_light(mx, my, 420, 78, 88, 108, 1000)
 
     # ------------------------------------------------------------------------
     # 0. CAJA DE CIELO SELLADA Y SUELO BASE DE GREEN RUN
@@ -1405,6 +1405,163 @@ def build_tranzit_world():
     add_prop("models/props/dentist_chair.mdl", (2050, -980, 20), 180)
 
     # ========================================================================
+    # 14. VEHICULOS ABANDONADOS, ALUMBRADO DEL CIRCUITO, VALLADOS Y SENALES
+    # ========================================================================
+    # Utilidades de vehiculos: trabajan en coordenadas locales (u = largo,
+    # v = ancho) y se orientan en el mundo con `along_x`.
+
+    def add_bus_wreck(x0: float, y0: float, along_x: bool = True):
+        """Autobus siniestrado: 300 x 116, piso a 18, techo a 132."""
+        L, W = 300.0, 116.0
+
+        def B(u0, v0, z0, u1, v1, z1, **kw):
+            if along_x:
+                add_brush(x0 + u0, y0 + v0, z0, x0 + u1, y0 + v1, z1, **kw)
+            else:
+                add_brush(x0 + v0, y0 + u0, z0, x0 + v1, y0 + u1, z1, **kw)
+
+        B(0, 0, 8, L, W, 18, tex_sides="bus_metal", tex_top="metal_floor", tex_bottom="bus_metal")
+        B(0, 0, 126, L, W, 132, tex_sides="bus_metal", tex_top="bus_metal", tex_bottom="bus_metal")
+        # Laterales con hueco de puerta central (u[120..200]) en el lado v=0
+        B(0, 0, 18, 120, 8, 126, tex_sides="bus_side", tex_top="bus_side", tex_bottom="bus_side")
+        B(200, 0, 18, L, 8, 126, tex_sides="bus_side", tex_top="bus_side", tex_bottom="bus_side")
+        B(0, W - 8, 18, L, W, 126, tex_sides="bus_side", tex_top="bus_side", tex_bottom="bus_side")
+        # Frontal y trasera
+        B(0, 0, 18, 8, W, 126, tex_sides="bus_side", tex_top="bus_side", tex_bottom="bus_side")
+        B(L - 8, 0, 18, L, W, 126, tex_sides="bus_side", tex_top="bus_side", tex_bottom="bus_side")
+        # Franjas de ventanas (cristal roto) a ambos lados
+        for i in range(5):
+            u = 22 + i * 56
+            B(u, -3, 58, u + 40, 3, 104, tex_sides="g_glass_", tex_top="g_glass_", tex_bottom="g_glass_")
+            B(u, W - 3, 58, u + 40, W + 3, 104, tex_sides="g_glass_", tex_top="g_glass_", tex_bottom="g_glass_")
+        # Faros delanteros y pilotos traseros
+        for v0 in (16, W - 34):
+            B(-2, v0, 40, 2, v0 + 18, 56, tex_sides="bus_tail", tex_top="bus_tail", tex_bottom="bus_tail")
+            B(L - 2, v0, 40, L + 2, v0 + 18, 56, tex_sides="bus_headlight", tex_top="bus_headlight", tex_bottom="bus_headlight")
+        # Ruedas
+        for (wu, wv) in ((40, -6), (40, W - 22), (L - 68, -6), (L - 68, W - 22)):
+            B(wu, wv, 0, wu + 28, wv + 28, 18,
+              tex_sides="m_metal_darkBlu", tex_top="m_metal_darkBlu", tex_bottom="m_metal_darkBlu")
+
+    def add_car_wreck(x0: float, y0: float, along_x: bool = True, tex: str = "m_metal_darkBlu"):
+        """Coche abandonado: 180 x 88, chasis a 44, cabina a 82."""
+        L, W = 180.0, 88.0
+
+        def B(u0, v0, z0, u1, v1, z1, **kw):
+            if along_x:
+                add_brush(x0 + u0, y0 + v0, z0, x0 + u1, y0 + v1, z1, **kw)
+            else:
+                add_brush(x0 + v0, y0 + u0, z0, x0 + v1, y0 + u1, z1, **kw)
+
+        B(0, 0, 14, L, W, 46, tex_sides=tex, tex_top=tex, tex_bottom=tex)
+        B(38, 6, 46, 130, W - 6, 84, tex_sides=tex, tex_top=tex, tex_bottom=tex)
+        # Parabrisas y luneta trasera
+        B(132, 10, 50, 138, W - 10, 74, tex_sides="g_glass_", tex_top="g_glass_", tex_bottom="g_glass_")
+        B(34, 10, 50, 40, W - 10, 74, tex_sides="g_glass_", tex_top="g_glass_", tex_bottom="g_glass_")
+        # Ventanillas laterales
+        B(56, 4, 54, 122, 10, 74, tex_sides="g_glass_", tex_top="g_glass_", tex_bottom="g_glass_")
+        B(56, W - 10, 54, 122, W - 4, 74, tex_sides="g_glass_", tex_top="g_glass_", tex_bottom="g_glass_")
+        # Ruedas
+        for (wu, wv) in ((24, -8), (24, W - 20), (L - 52, -8), (L - 52, W - 20)):
+            B(wu, wv, 0, wu + 28, wv + 28, 22,
+              tex_sides="m_metal_darkBlu", tex_top="m_metal_darkBlu", tex_bottom="m_metal_darkBlu")
+
+    def add_fence_run(x0: float, y0: float, x1: float, y1: float, height: float = 88.0,
+                      tex: str = "fence_wood", step: float = 110.0, rail_z=0.0):
+        """Vallado: travesano continuo mas postes cada `step` unidades."""
+        if abs(x1 - x0) >= abs(y1 - y0):
+            xa, xb = min(x0, x1), max(x0, x1)
+            yc = 0.5 * (y0 + y1)
+            add_brush(xa, yc - 4, rail_z, xb, yc + 4, height,
+                      tex_sides=tex, tex_top=tex, tex_bottom=tex)
+            a = xa
+            while a <= xb:
+                add_column(a, yc, rail_z, height + 14, size=12.0, tex="w_wood_dark_64")
+                a += step
+        else:
+            ya, yb = min(y0, y1), max(y0, y1)
+            xc = 0.5 * (x0 + x1)
+            add_brush(xc - 4, ya, rail_z, xc + 4, yb, height,
+                      tex_sides=tex, tex_top=tex, tex_bottom=tex)
+            a = ya
+            while a <= yb:
+                add_column(xc, a, rail_z, height + 14, size=12.0, tex="w_wood_dark_64")
+                a += step
+
+    # Gran cementerio de vehiculos al norte de la autopista, en la franja de
+    # tierra entre el Diner y la Granja (X[-620..340], Y[1560..2020]).
+    add_bus_wreck(-560, 1620, along_x=True)
+    add_bus_wreck(-560, 1780, along_x=True)
+    add_bus_wreck(-200, 1600, along_x=True)
+    add_car_wreck(-200, 1780, along_x=True, tex="metal_stB")
+    add_car_wreck(120, 1800, along_x=False)
+    add_car_wreck(-40, 1900, along_x=True, tex="w_wood_dark_64")
+    add_fence_run(-620, 1560, -620, 2020, height=80.0, tex="fence_wood")
+    add_fence_run(-620, 1560, 340, 1560, height=80.0, tex="fence_wood")
+    add_fence_run(-620, 2020, 340, 2020, height=80.0, tex="fence_wood")
+    for (gx, gy) in ((-560, 1600), (-560, 1980), (-200, 1580), (300, 1900)):
+        add_street_lamp(gx, gy)
+    for (nlx, nly) in ((-400, 1700), (0, 1700), (-200, 1900), (200, 1860), (-100, 1620)):
+        add_light(nlx, nly, 140, 190, 198, 215, 540)
+
+    # Vehiculos aparcados en el patio de las torres de refrigeracion
+    add_car_wreck(2050, 600, along_x=True, tex="w_wood_dark_64")
+    add_car_wreck(2280, 600, along_x=False, tex="metal_stB")
+
+    # Luces de apoyo en el patio de las torres de refrigeracion y en los accesos
+    # al maizal, para que ninguna zona transitable quede por debajo del umbral.
+    for (elx, ely) in ((1560, 700), (1900, 700), (2200, 760), (2400, 700), (1700, 560)):
+        add_light(elx, ely, 170, 150, 195, 245, 780)
+    for (wlx, wly) in ((-400, 1620), (0, 1620), (200, 1760), (-300, 1900), (280, 1620)):
+        add_light(wlx, wly, 150, 185, 200, 215, 640)
+    for (clx, cly) in ((-450, -300), (-450, 100), (-450, 500), (-450, 900)):
+        add_light(clx, cly, 130, 165, 180, 135, 560)
+
+    # --- Alumbrado del circuito de la autopista ------------------------------
+    for ly in (-1700, -1300, -900, -500, -100, 300, 700, 1100, 1500, 1900, 2300):
+        add_street_lamp(-1185, ly)
+    for lx in (-1400, -1000, -600, -200, 200, 600, 1000, 1400):
+        add_street_lamp(lx, 985)
+    for ly2 in (-1700, -1300, -900, -500, -100, 300, 700, 1100):
+        add_street_lamp(985, ly2)
+    for lx2 in (-1400, -1000, 800, 1200):
+        add_street_lamp(lx2, -1490)
+
+    # --- Vallado perimetral del maizal (con hueco para el sendero) -----------
+    add_fence_run(-380, -480, -380, 1180, height=96.0, tex="fence_wood")
+    add_fence_run(380, -480, 380, 1180, height=96.0, tex="fence_wood")
+    add_fence_run(-380, -480, -80, -480, height=96.0, tex="fence_wood")
+    add_fence_run(80, -480, 380, -480, height=96.0, tex="fence_wood")
+    add_fence_run(-380, 1180, -80, 1180, height=96.0, tex="fence_wood")
+    add_fence_run(80, 1180, 380, 1180, height=96.0, tex="fence_wood")
+
+    # --- Sefiales de carretera del circuito ----------------------------------
+    for (sgx, sgy, face, tex) in (
+        (-1180, -400, "+x", "sign_tunnel"),
+        (-1180, 1700, "+x", "sign_diner"),
+        (985, 0, "-x", "sign_power"),
+        (985, 1300, "-x", "sign_farm"),
+        (-700, 990, "+y", "sign_depot"),
+        (700, 990, "+y", "sign_town"),
+        (-1180, -1700, "+x", "sign_depot"),
+        (985, -1700, "-x", "sign_town"),
+    ):
+        add_brush(sgx - 6, sgy - 6, 0, sgx + 6, sgy + 6, 150,
+                  tex_sides="m_metal_darkBlu", tex_top="m_metal_darkBlu", tex_bottom="m_metal_darkBlu")
+        if face == "+x":
+            add_brush(sgx + 6, sgy - 60, 110, sgx + 12, sgy + 60, 172,
+                      tex_sides="metal_stB", face_tex={"+x": tex})
+        elif face == "-x":
+            add_brush(sgx - 12, sgy - 60, 110, sgx - 6, sgy + 60, 172,
+                      tex_sides="metal_stB", face_tex={"-x": tex})
+        elif face == "+y":
+            add_brush(sgx - 60, sgy + 6, 110, sgx + 60, sgy + 12, 172,
+                      tex_sides="metal_stB", face_tex={"+y": tex})
+        else:
+            add_brush(sgx - 60, sgy - 12, 110, sgx + 60, sgy - 6, 172,
+                      tex_sides="metal_stB", face_tex={"-y": tex})
+
+    # ========================================================================
     # RED DE WAYPOINTS (.WAY) CONECTANDO LAS 6 ZONAS Y SUS PUERTAS COMPRABLES
     # ========================================================================
     # Definimos los nodos (id 1..N) y sus enlaces bidireccionales + wayTarget en puertas
@@ -1729,7 +1886,7 @@ def compile_bsp30(
             return lightofs
 
         # Luz ambiental base de Tranzit (noche cerrada con tinte azul verdoso)
-        amb_r, amb_g, amb_b = 50.0, 55.0, 64.0
+        amb_r, amb_g, amb_b = 57.0, 63.0, 74.0
         for it in range(tmax):
             t_tex = (bmin_t + it) * 16.0
             for is_ in range(smax):
