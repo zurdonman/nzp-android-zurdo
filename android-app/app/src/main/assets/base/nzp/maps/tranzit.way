@@ -231,7 +231,7 @@ special =
 target = 11
 target2 = 17
 target3 = 19
-target4 =
+target4 = 38
 target5 =
 target6 =
 target7 =
@@ -319,7 +319,7 @@ origin = '4606 2726 36'
 id = 22
 special = 
 target = 34
-target2 =
+target2 = 36
 target3 =
 target4 =
 target5 =
@@ -515,6 +515,81 @@ id = 35
 special = 
 target = 24
 target2 = 26
+target3 =
+target4 =
+target5 =
+target6 =
+target7 =
+target8 =
+}
+
+Waypoint
+{
+origin = '5069 2256 40'
+id = 36
+special = 
+target = 22
+target2 = 37
+target3 =
+target4 =
+target5 =
+target6 =
+target7 =
+target8 =
+}
+
+Waypoint
+{
+origin = '5069 2973 176'
+id = 37
+special = 
+target = 36
+target2 =
+target3 =
+target4 =
+target5 =
+target6 =
+target7 =
+target8 =
+}
+
+Waypoint
+{
+origin = '-1551 5334 40'
+id = 38
+special = 
+target = 16
+target2 = 39
+target3 =
+target4 =
+target5 =
+target6 =
+target7 =
+target8 =
+}
+
+Waypoint
+{
+origin = '-1551 4089 268'
+id = 39
+special = 
+target = 38
+target2 = 40
+target3 =
+target4 =
+target5 =
+target6 =
+target7 =
+target8 =
+}
+
+Waypoint
+{
+origin = '-1997 4700 268'
+id = 40
+special = 
+target = 39
+target2 =
 target3 =
 target4 =
 target5 =

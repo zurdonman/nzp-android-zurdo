@@ -887,10 +887,10 @@ def build_tranzit_world():
     # Ventilador cupular sobre la cumbrera
     add_brush(1930, 1140, 312, 1970, 1180, 356, tex_sides="wall_Owood", tex_top="shingle_roof", tex_bottom="wall_Owood")
     # Viga del pajar y riel de la puerta corredera
-    add_beam(1682, 1140, 2218, 1180, 176, 184, "w_wood_dark_64")
+    add_beam(1682, 1140, 1890, 1180, 176, 184, "w_wood_dark_64")  # acortada: no cruza la escalera
     add_beam(1650, 1050, 1682, 1270, 176, 188, "m_metal_darkBlu")
     # Pacas de heno apiladas en el pajar
-    for (hx, hy, hz) in ((1760, 1000, 0), (1760, 1000, 40), (1830, 1000, 0), (1760, 1080, 0)):
+    for (hx, hy, hz) in ((1760, 1000, 0), (1760, 1000, 40), (1830, 1000, 0), (1900, 980, 0)):
         add_brush(hx - 36, hy - 22, hz, hx + 36, hy + 22, hz + 40,
                   tex_sides="hay_wall", tex_top="hay_wall", tex_bottom="hay_wall")
     for (hx, hy) in ((2120, 1300), (2180, 1300), (2120, 1240)):
@@ -902,8 +902,8 @@ def build_tranzit_world():
     add_light(1950, 1160, 96, 210, 190, 150, 380)
     # Pesebres y separaciones de las cuadras del granero
     for sy2 in (1010, 1090, 1170, 1250):
-        add_brush(2040, sy2 - 6, 0, 2200, sy2 + 6, 56, tex_sides="w_wood_dark_64", tex_top="wood_t1", tex_bottom="w_wood_dark_64")
-    add_brush(2040, 1330, 0, 2200, 1342, 90, tex_sides="w_wood_dark_64", tex_top="wood_t1", tex_bottom="w_wood_dark_64")
+        add_brush(2040, sy2 - 6, 0, 2090, sy2 + 6, 56, tex_sides="w_wood_dark_64", tex_top="wood_t1", tex_bottom="w_wood_dark_64")
+    add_brush(2040, 1330, 0, 2090, 1342, 90, tex_sides="w_wood_dark_64", tex_top="wood_t1", tex_bottom="w_wood_dark_64")
     # Escalera de mano al pajar y aperos colgados
     for r in range(9):
         add_brush(1740, 1330, r * 18, 1760, 1346, r * 18 + 6, tex_sides="w_wood_dark_64", tex_top="w_wood_dark_64", tex_bottom="w_wood_dark_64")
@@ -1544,7 +1544,7 @@ def build_tranzit_world():
     # tierra entre el Diner y la Granja (X[-620..340], Y[1560..2020]).
     add_bus_wreck(-560, 1620, along_x=True)
     add_bus_wreck(-560, 1780, along_x=True)
-    add_bus_wreck(-200, 1600, along_x=True)
+    add_bus_wreck(300, 1600, along_x=True)
     add_car_wreck(-200, 1780, along_x=True, tex="metal_stB")
     add_car_wreck(120, 1800, along_x=False)
     add_car_wreck(-40, 1900, along_x=True, tex="w_wood_dark_64")
@@ -1614,6 +1614,60 @@ def build_tranzit_world():
                       tex_sides="metal_stB", face_tex={"-y": tex})
 
     # ========================================================================
+    # 15. SEGUNDAS PLANTAS TRANSITABLES: PAJAR DEL GRANERO Y AZOTEA DEL DINER
+    # ========================================================================
+    # Con el mapa 2,35 veces mas ancho hacia falta altura real, no solo
+    # superficie. Estos dos pisos altos estan conectados a la red .way (nodos
+    # 36..40), asi que los zombies tambien suben: son atajos y posiciones
+    # elevadas, no escondites.
+
+    # --- Pajar del Granero: forjado de madera a Z=140 sobre las cuadras -----
+    LOFT_Z = 140.0
+    # Forjado (se ignora la cara inferior: queda oculta sobre las cuadras)
+    add_brush(2060, 1150, LOFT_Z - 10.0, 2214, 1380, LOFT_Z,
+              tex_sides="w_wood_dark_64", tex_top="wood_t1",
+              tex_bottom="w_wood_dark_64", skip_faces={"-z"})
+    # Barandilla del lado abierto (sur), con hueco de acceso frente a la escalera
+    add_rail(2060, 1150, 2214, 1150, LOFT_Z, LOFT_Z + 40, "w_wood_dark_64", thick=6.0)
+    # Escalera de madera de 8 peldanos (17,5u cada uno, por debajo del escalon
+    # maximo de 18u que puede subir el jugador sin saltar)
+    for i in range(8):
+        add_brush(2100, 1000 + i * 18.75, 0.0,
+                  2214, 1000 + (i + 1) * 18.75, LOFT_Z * (i + 1) / 8.0,
+                  tex_sides="w_wood_dark_64", tex_top="wood_t1",
+                  tex_bottom="w_wood_dark_64", skip_faces={"-z"})
+    add_ceiling_lamp(2157, 1265, 232)
+    add_light(2157, 1265, LOFT_Z + 70, 190, 165, 120, 340)
+
+    # --- Escalera de incendios y azotea transitable del Diner (Z=232) -------
+    ROOF_Z = 232.0
+    STEPS = 14
+    RUN = 500.0 / STEPS          # 35,7u de huella por peldano
+    for i in range(STEPS):
+        y0 = 2200.0 - i * RUN
+        y1 = 2200.0 - (i + 1) * RUN
+        add_brush(-700.0, y1, 0.0, -620.0, y0, ROOF_Z * (i + 1) / STEPS,
+                  tex_sides="metal_stB", tex_top="metal_grate",
+                  tex_bottom="metal_stB", skip_faces={"-z"})
+    # Barandilla exterior de la escalera de incendios
+    add_rail(-616, 1700, -616, 2200, 0.0, ROOF_Z + 42, "metal_grate", thick=8.0)
+    # Pretil bajo en todo el perimetro de la azotea para no caerse al vacio
+    for (px0, py0, px1, py1) in (
+        (-1550, 1674, -700, 1680),   # sur
+        (-1550, 2250, -700, 2256),   # norte
+        (-1556, 1680, -1550, 2250),  # oeste
+        (-700, 1810, -694, 2256),    # este (hueco frente a la escalera)
+    ):
+        add_brush(px0, py0, ROOF_Z, px1, py1, ROOF_Z + 40,
+                  tex_sides="bricks_red2", tex_top="bricks_red2",
+                  tex_bottom="bricks_red2", skip_faces={"-z"})
+    # Farola y salida de humos en la azotea
+    add_street_lamp(-1150, 1960, z=ROOF_Z)
+    add_brush(-1240, 1740, ROOF_Z, -1140, 1800, ROOF_Z + 96,
+              tex_sides="metal_stB", tex_top="metal_stB", tex_bottom="metal_stB")
+    add_light(-1150, 1960, ROOF_Z + 190, 235, 205, 150, 340)
+
+    # ========================================================================
     # RED DE WAYPOINTS (.WAY) CONECTANDO LAS 6 ZONAS Y SUS PUERTAS COMPRABLES
     # ========================================================================
     # Definimos los nodos (id 1..N) y sus enlaces bidireccionales + wayTarget en puertas
@@ -1637,7 +1691,7 @@ def build_tranzit_world():
         14: (-4606, 3797, 36, "door_garage", [10, 15]),
         15: (-4606, 4512, 36, "", [14]),
         # Carretera Norte y Desvio al Maizal / Nacht Bunker (16..18)
-        16: (0, 3196, 36, "", [11, 17, 19]),
+        16: (0, 3196, 36, "", [11, 17, 19, 38]),
         17: (0, 1222, 36, "", [16, 18]),
         18: (0, -282, 36, "", [17]),
         # Farm Exterior (19) -> Puerta Farm (20) -> Patio Farm (21), Entrada Granero (34) y Barn Interior (22)
@@ -1645,7 +1699,7 @@ def build_tranzit_world():
         20: (3562, 3431, 36, "door_farm", [19, 21]),
         21: (3736, 3431, 36, "", [20, 34]),
         34: (3736, 2726, 36, "", [21, 22]),
-        22: (4606, 2726, 36, "", [34]),
+        22: (4606, 2726, 36, "", [34, 36]),
         # Carretera Este y Power Station (23..25, 33, 35)
         23: (3149, 1128, 36, "", [19, 24]),
         24: (3196, -376, 36, "", [23, 25, 35]),
@@ -1660,6 +1714,12 @@ def build_tranzit_world():
         30: (-235, -4314, 36, "door_bank", [27, 31]),
         31: (-235, -4888, 36, "", [30, 32]),
         32: (413, -4888, 36, "door_vault", [31]),
+        # --- Segundas plantas (escalera del pajar y azotea del Diner) -------
+        36: (5069, 2256, 40, "", [22, 37]),      # pie de la escalera del pajar
+        37: (5069, 2973, 176, "", [36]),         # pajar del granero (Z=140)
+        38: (-1551, 5334, 40, "", [16, 39]),     # pie de la escalera de incendios
+        39: (-1551, 4089, 268, "", [38, 40]),    # rellano alto de la escalera
+        40: (-1997, 4700, 268, "", [39]),        # azotea del Diner (borde este, Z=232)
     }
 
     for wid in sorted(wp_nodes.keys()):
