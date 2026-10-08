@@ -15,9 +15,11 @@ Genera:
   6. android-app/app/src/main/assets/base/nzp/gfx/lscreen/tranzit.png (512x256)
 """
 
+import bisect
 import math
 import os
 import struct
+import sys
 import zlib
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
@@ -29,6 +31,19 @@ MAPS_SRC_DIR = os.path.join(ROOT_DIR, "maps_src")
 CONTENTS_EMPTY = -1
 CONTENTS_SOLID = -2
 TEX_SPECIAL = 1
+MAX_MAP_CLIPNODES = 32767
+
+# Texturas que emiten luz propia: su lightmap se rellena con un color fijo
+# (el motor NZ:P no soporta el rango fullbright de la paleta WAD3 en Half-Life).
+FULLBRIGHT_TEXTURES: Dict[str, Tuple[int, int, int]] = {
+    "lava_cracks": (255, 150, 52),
+    "br_lightGL": (255, 240, 200),
+    "reactor_blue": (66, 176, 255),
+    "window_lit": (255, 202, 124),
+    "danger_stripe": (150, 132, 48),
+    "bus_headlight": (255, 250, 226),
+    "bus_tail": (255, 70, 50),
+}
 
 
 @dataclass
@@ -80,7 +95,7 @@ class PointLight:
 
 
 def load_wad3_textures_from_town() -> Dict[str, bytes]:
-    """Extrae las texturas WAD3 embebidas en town.bsp y anade texturas custom de Tranzit."""
+    """Extrae las texturas WAD3 embebidas en town.bsp y anade las custom de Tranzit."""
     town_bsp = os.path.join(ASSET_NZP_DIR, "maps", "town.bsp")
     with open(town_bsp, "rb") as f:
         data = f.read()
@@ -102,68 +117,14 @@ def load_wad3_textures_from_town() -> Dict[str, bytes]:
         total_len = (end_mip3 - abs_p) + 2 + colors_used * 3 + 2
         raw_blobs[name] = data[abs_p : abs_p + total_len]
 
-    # Crear textura WAD3 custom para las grietas de lava incandescente de Tranzit
-    raw_blobs["lava_cracks"] = make_custom_wad3_texture("lava_cracks", 64, 64, "lava")
-    raw_blobs["corn_wall"] = make_custom_wad3_texture("corn_wall", 64, 64, "corn")
-    raw_blobs["bus_metal"] = make_custom_wad3_texture("bus_metal", 64, 64, "bus")
+    # Texturas procedimentales exclusivas de Green Run (rotulos, asfalto con
+    # linea central, aceras, lona del autobus, reactor, tejas, heno, ...)
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import tranzit_textures
+
+    for name, blob in tranzit_textures.build_custom_textures().items():
+        raw_blobs[name] = blob
     return raw_blobs
-
-
-def make_custom_wad3_texture(name: str, w: int, h: int, style: str) -> bytes:
-    """Construye un bloque miptex WAD3 (4 mipmaps + paleta 256 RGB)."""
-    palette = []
-    for i in range(256):
-        if style == "lava":
-            # Gradiente de roca volcanica oscura a magma naranja/amarillo brillante
-            t = i / 255.0
-            r = min(255, int(40 + 215 * (t ** 0.7)))
-            g = min(255, int(10 + 165 * (t ** 1.4)))
-            b = min(255, int(5 + 60 * (t ** 2.5)))
-        elif style == "corn":
-            t = i / 255.0
-            r = int(22 + 55 * t)
-            g = int(34 + 75 * t)
-            b = int(16 + 30 * t)
-        else:  # bus
-            t = i / 255.0
-            r = int(28 + 65 * t)
-            g = int(42 + 85 * t)
-            b = int(52 + 95 * t)
-        palette.extend([r, g, b])
-
-    def gen_mip(mw: int, mh: int) -> bytes:
-        buf = bytearray(mw * mh)
-        for y in range(mh):
-            for x in range(mw):
-                if style == "lava":
-                    v = (
-                        math.sin(x * 0.35 + y * 0.25)
-                        + math.cos(x * 0.2 - y * 0.4)
-                        + math.sin((x + y) * 0.5)
-                    )
-                    idx = max(16, min(254, int(135 + 85 * (v / 3.0))))
-                elif style == "corn":
-                    stripe = math.sin(x * 0.9) * 0.5 + math.sin(y * 0.35) * 0.5
-                    idx = max(8, min(240, int(110 + 70 * stripe)))
-                else:
-                    border = 1 if (x < 2 or x >= mw - 2 or y < 2 or y >= mh - 2) else 0
-                    idx = 45 if border else (130 if (y % 8 < 2) else 95)
-                buf[y * mw + x] = idx
-        return bytes(buf)
-
-    mip0 = gen_mip(w, h)
-    mip1 = gen_mip(w // 2, h // 2)
-    mip2 = gen_mip(w // 4, h // 4)
-    mip3 = gen_mip(w // 8, h // 8)
-
-    o0 = 40
-    o1 = o0 + len(mip0)
-    o2 = o1 + len(mip1)
-    o3 = o2 + len(mip2)
-    name_bytes = name.encode("latin1")[:15].ljust(16, b"\x00")
-    hdr = struct.pack("<16sIIIIII", name_bytes, w, h, o0, o1, o2, o3)
-    tail = struct.pack("<H", 256) + bytes(palette) + b"\x00\x00"
-    return hdr + mip0 + mip1 + mip2 + mip3 + tail
 
 
 # ============================================================================
@@ -281,11 +242,109 @@ def build_tranzit_world():
     def add_prop(model_path: str, origin: Tuple[float, float, float], yaw: int = 0):
         add_ent("place_model", origin, mdl=model_path, angles=f"0 {yaw} 0")
 
+    # --- Utilidades arquitectonicas de alto nivel ---------------------------
+
+    def add_floor(x0, y0, x1, y1, tex, z0=0.0, z1=2.0):
+        """Loseta de suelo interior/exterior (cara superior a Z=z1)."""
+        add_brush(x0, y0, z0, x1, y1, z1, tex_sides=tex, tex_top=tex, tex_bottom=tex, skip_faces={"-z"})
+
+    def add_road(x0, y0, x1, y1, tex="road_stripe"):
+        """Calzada: 1u de grosor (por debajo del escalon de la acera)."""
+        add_floor(x0, y0, x1, y1, tex, 0.0, 1.0)
+
+    def add_walk(x0, y0, x1, y1, tex="sidewalk", top=5.0):
+        """Aceras y bordillos (5u de alto, subibles sin saltar)."""
+        add_floor(x0, y0, x1, y1, tex, 0.0, top)
+
+    def add_column(cx, cy, z0, z1, size=16.0, tex="brick_pillar"):
+        """Pilar / columna cuadrada centrada en (cx, cy)."""
+        h = size * 0.5
+        add_brush(cx - h, cy - h, z0, cx + h, cy + h, z1, tex_sides=tex, tex_top=tex, tex_bottom=tex)
+
+    def add_beam(x0, y0, x1, y1, z0, z1, tex="metal_stB"):
+        """Viga horizontal (dinteles, marquesinas, vigas de tejado)."""
+        add_brush(x0, y0, z0, x1, y1, z1, tex_sides=tex, tex_top=tex, tex_bottom=tex)
+
+    def add_panel(x0, y0, z0, x1, y1, z1, tex, faces):
+        """Panel plano (rotulo, ventana, persiana) con solo las caras dadas visibles."""
+        add_brush(
+            x0, y0, z0, x1, y1, z1,
+            tex_sides="conc_road_D2",
+            face_tex={f: tex for f in faces},
+        )
+
+    def add_steps(x0, y0, x1, y1, z_top, step_h=6.0, tex="sidewalk", dir_x=True, count=3):
+        """Escalera de `count` peldanos de `step_h` unidades."""
+        for i in range(count):
+            z0 = z_top - (count - i) * step_h
+            if dir_x:
+                sx0 = x0 + i * (x1 - x0) / count
+                add_floor(sx0, y0, x1, y1, tex, 0.0, z0 + step_h)
+            else:
+                sy0 = y0 + i * (y1 - y0) / count
+                add_floor(x0, sy0, x1, y1, tex, 0.0, z0 + step_h)
+
+    def add_rail(x0, y0, x1, y1, z0, z1, tex="metal_grate", thick=6.0):
+        """Barandilla sencilla (travesano superior)."""
+        add_brush(
+            min(x0, x1) - thick, min(y0, y1) - thick, z0,
+            max(x0, x1) + thick, max(y0, y1) + thick, z1,
+            tex_sides=tex, tex_top=tex, tex_bottom=tex,
+        )
+
+    def add_window_row(a0, a1, z0, z1, face, wall_a, spacing=140.0, tex="window_lit", depth=8.0, inset=2.0):
+        """Fila de ventanas iluminadas sobre la cara interior de una pared.
+
+        `face` es la normal de la cara visible (lado desde el que se mira) y
+        `wall_a` es la coordenada de la cara interior de la pared. El panel se
+        coloca siempre DENTRO de la sala, separado `inset` unidades de la pared
+        para evitar z-fighting.
+        """
+        horizontal = face in ("-y", "+y")
+        if face == "-y":
+            b0, b1 = wall_a - inset - depth, wall_a - inset
+        elif face == "+y":
+            b0, b1 = wall_a + inset, wall_a + inset + depth
+        elif face == "-x":
+            b0, b1 = wall_a - inset - depth, wall_a - inset
+        else:
+            b0, b1 = wall_a + inset, wall_a + inset + depth
+
+        a = a0 + spacing * 0.5
+        while a + spacing * 0.5 <= a1:
+            c0, c1 = a - 20.0, a + 20.0
+            if horizontal:
+                add_brush(c0, b0, z0, c1, b1, z1, tex_sides=tex, face_tex={face: tex})
+            else:
+                add_brush(b0, c0, z0, b1, c1, z1, tex_sides=tex, face_tex={face: tex})
+            a += spacing
+
+    def add_street_lamp(x, y, z=0.0):
+        """Farola de calle: poste + luminaria de luz calida."""
+        add_column(x, y, z, z + 190, size=8.0, tex="m_metal_darkBlu")
+        add_brush(x - 16, y - 16, z + 190, x + 16, y + 16, z + 204, tex_sides="br_lightGL", tex_top="m_metal_darkBlu", tex_bottom="br_lightGL")
+        add_light(x, y, z + 176, 235, 205, 150, 340)
+
+    def add_ceiling_lamp(x, y, z, tex="br_lightGL"):
+        """Luminaria de techo empotrada."""
+        add_brush(x - 26, y - 26, z, x + 26, y + 26, z + 8, tex_sides=tex, tex_top="conc_road_D2", tex_bottom=tex)
+        add_light(x, y, z - 24, 225, 210, 168, 300)
+
+    def add_truss(x0, y0, x1, y1, z, tex="metal_stB"):
+        """Cercha metalica de refuerzo en tejados y marquesinas."""
+        add_beam(x0, y0, x1, y1, z, z + 12, tex)
+
+    # Luz de luna difusa: rejilla de focos muy suaves en altura que evita que
+    # las zonas exteriores alejadas de las estaciones queden completamente negras.
+    for mx in range(-2100, 2400, 700):
+        for my in range(-2100, 2400, 700):
+            add_light(mx, my, 420, 60, 68, 84, 1000)
+
     # ------------------------------------------------------------------------
     # 0. CAJA DE CIELO SELLADA Y SUELO BASE DE GREEN RUN
     # ------------------------------------------------------------------------
-    # Suelo general en Z=[-64..0]
-    add_brush(-2400, -2400, -64, 2400, 2400, 0, tex_sides="ground_dirt", tex_top="asphalt", tex_bottom="ground_dirt")
+    # Suelo general en Z=[-64..0] (tierra/maleza de Green Run)
+    add_brush(-2400, -2400, -64, 2400, 2400, 0, tex_sides="ground_dirt", tex_top="ground_dirt", tex_bottom="ground_dirt")
     # Techo de cielo nocturno en Z=[512..544]
     add_brush(-2400, -2400, 512, 2400, 2400, 544, tex_sides="sky_night", tex_top="sky_night", tex_bottom="sky_night")
     # 4 muros perimetrales exteriores (Z=[0..512])
@@ -308,6 +367,55 @@ def build_tranzit_world():
     add_brush(350, -1150, 0, 1150, -250, 384, tex_sides="con_rN", tex_top="roof_green")
     # Muro sur de Nacht (separa Nacht de la carretera sur de Town, obligando a entrar por el Norte del maizal)
     add_brush(-350, -1150, 0, 350, -450, 384, tex_sides="corn_wall", tex_top="roof_green")
+
+    # ------------------------------------------------------------------------
+    # 0.B RED VIARIA DE GREEN RUN: CALZADAS, ACERAS, BORDILLOS Y PASOS
+    # ------------------------------------------------------------------------
+    # Anillo de autopista por el que circula el autobus de Tranzit:
+    #   Tramo Oeste  : X[-1550..-1220], Y[-1800..2400]
+    #   Tramo Norte  : Y[1020..1420],   X[-1550..1620]
+    #   Tramo Este   : X[1020..1420],   Y[-1800..1420]
+    #   Tramo Sur    : Y[-1800..-1500], X[-1550..1420]
+    add_road(-1550, -1800, -1220, 2400, "road_stripe")
+    add_road(-1550, 1020, 1620, 1420, "road_stripe")
+    add_road(1020, -1800, 1420, 1420, "road_stripe")
+    add_road(-1550, -1800, 1420, -1500, "road_stripe")
+
+    # Aceras y bordillos a ambos lados de cada tramo de autopista
+    add_walk(-1620, -1800, -1550, 2400)     # Bordillo oeste del tramo oeste
+    add_walk(-1220, -1800, -1150, 2400)     # Bordillo este del tramo oeste
+    add_walk(-1620, 1420, 1620, 1490)       # Bordillo norte del tramo norte
+    add_walk(-1620, 950, 1620, 1020)        # Bordillo sur del tramo norte
+    add_walk(1420, -1800, 1490, 1420)       # Bordillo este del tramo este
+    add_walk(950, -1800, 1020, 1420)        # Bordillo oeste del tramo este
+    add_walk(-1550, -1870, -650, -1800)     # Bordillo sur del tramo sur (oeste)
+    add_walk(650, -1870, 1420, -1800)       # Bordillo sur del tramo sur (este)
+    add_walk(-650, -1820, 650, -1800)       # Aceron delante del Banco
+    add_walk(-1550, -1500, -550, -1480)     # Bordillo norte del tramo sur (oeste)
+    add_walk(250, -1500, 1420, -1480)       # Bordillo norte del tramo sur (este)
+    add_walk(-550, -1500, 250, -1480)       # Aceron delante del Bar
+
+    # Pasos de peatones en las 4 esquinas del circuito
+    for (px, py, horiz) in (
+        (-1400, -1790, True), (-1400, -1440, True),
+        (1120, -1790, True), (1120, -1440, True),
+        (-1300, 1150, False), (-1000, 1150, False),
+        (1100, 1150, False), (1400, 1150, False),
+    ):
+        if horiz:
+            for i in range(6):
+                add_road(px - 120 + i * 44, py - 30, px - 120 + i * 44 + 26, py + 30, "sidewalk")
+        else:
+            for i in range(6):
+                add_road(px - 30, py - 120 + i * 44, px + 30, py - 120 + i * 44 + 26, "sidewalk")
+
+    # Plataformas de hormigon de las paradas del autobus (8 paradas), encaradas
+    # al lateral sur del vehiculo para poder subir andando (desnivel de 6u).
+    for (sx, sy) in (
+        (-1500, -1720), (-1500, 200), (-1500, 1240),
+        (0, 1240), (1240, 1240), (1240, -180), (1240, -1720), (0, -1720),
+    ):
+        add_walk(sx - 40, sy - 104, sx + 200, sy, top=6.0)
 
     # ========================================================================
     # ESTACION 1: BUS DEPOT (SUR-OESTE: X[-2300..-1150], Y[-2300..-1150])
@@ -377,6 +485,45 @@ def build_tranzit_world():
     add_light(-1880, -1880, 175, 255, 210, 145, 480)
     add_light(-1320, -1880, 190, 210, 170, 120, 450)
 
+    # --- Detalle arquitectonico del Bus Depot -------------------------------
+    # Solado interior de la terminal (baldosas grises)
+    add_floor(-2222, -2172, -1578, -1578, "3tiles_grey1")
+    # Andenes de hormigon y vias de los autobuses al sur de la parada del bus
+    add_walk(-1550, -2180, -1240, -1900, top=8.0)
+    for by in (-2120, -2040, -1960):
+        add_rail(-1540, by - 6, -1250, by + 6, 8, 22, "conc_road_D2")
+    # Marquesina de la entrada este (X[-1582..-1380], Y[-1990..-1730])
+    add_beam(-1582, -1990, -1380, -1730, 176, 192, "conS6C")
+    add_column(-1440, -1966, 0, 176, size=14.0, tex="metal_stB")
+    add_column(-1440, -1754, 0, 176, size=14.0, tex="metal_stB")
+    add_column(-1568, -1972, 0, 176, size=12.0, tex="metal_stB")
+    add_column(-1568, -1748, 0, 176, size=12.0, tex="metal_stB")
+    # Rotulos BUS DEPOT en las fachadas este y sur (por encima del tejado)
+    add_brush(-1556, -1960, 234, -1540, -1810, 266,
+              tex_sides="conc_road_D2", face_tex={"-x": "sign_depot", "+x": "sign_depot"})
+    add_brush(-2080, -2216, 234, -1930, -2200, 266,
+              tex_sides="conc_road_D2", face_tex={"-y": "sign_depot", "+y": "sign_depot"})
+    # Taquilla de billetes: mampara de cristal sobre el mostrador
+    add_brush(-2100, -1694, 44, -1920, -1678, 132, tex_sides="g_glass_", tex_top="m_metal_stG", tex_bottom="g_glass_")
+    add_beam(-2104, -1698, -1916, -1674, 132, 140, "w_wood_dark_64")
+    # Panel de salidas en la pared norte del vestibulo
+    add_brush(-2200, -1590, 96, -2060, -1578, 168, tex_sides="metal_stB", face_tex={"-y": "sign_depot"})
+    # Bancos de la sala de espera (2 filas de 2 bancos)
+    for bx in (-2180, -2060):
+        for by in (-2060, -1960):
+            add_brush(bx, by, 0, bx + 120, by + 34, 20, tex_sides="w_wood_dark_64", tex_top="wood_t1", tex_bottom="w_wood_dark_64")
+            add_brush(bx, by + 34, 0, bx + 120, by + 42, 52, tex_sides="w_wood_dark_64")
+    # Luminarias empotradas en el techo de la terminal
+    for lx in (-2140, -1980, -1820, -1660):
+        for ly in (-2100, -1900, -1700):
+            add_ceiling_lamp(lx, ly, 200)
+    # Ventanillas de cristal en las fachadas oeste (x=-2218) y sur (y=-2168)
+    add_window_row(-2214, -1590, 60, 120, "+y", -2168, spacing=150.0)
+    add_window_row(-2164, -1590, 60, 120, "+x", -2218, spacing=150.0)
+    # Pilares de ladrillo del portico de la entrada este
+    for py in (-2000, -1720):
+        add_column(-1520, py, 0, 208, size=16.0, tex="brick_pillar")
+
     # Spawners exteriores de Bus Depot (se desbloquean al abrir door_depot)
     add_ent("spawn_zombie", (-1250, -2150, 40), targetname="z_depot_ext", spawnflags="5")
     add_ent("spawn_zombie", (-1250, -1350, 40), targetname="z_depot_ext", spawnflags="5")
@@ -392,6 +539,43 @@ def build_tranzit_world():
         add_brush(-1720, py - 40, 0, -1660, py + 40, 240, tex_sides="con_linesB")
     # Grieta de lava en el Tunel
     add_lava_pit(-2050, -60, -1740, 80)
+    # --- Detalle arquitectonico del Highway Tunnel --------------------------
+    # Solado de asfalto continuo por el interior y las bocas del tunel
+    add_floor(-2250, -900, -1150, 900, "asphalt_line")
+    # Aceras y bordillos a ambos lados de la calzada del tunel
+    add_walk(-2150, -900, -2070, 900)
+    add_walk(-1230, -900, -1150, 900)
+    # Alicatado blanco de tunel en el zocalo del muro oeste
+    add_brush(-2150, -650, 0, -2140, 550, 104, tex_sides="tunnel_tile", face_tex={"+x": "tunnel_tile"})
+    # Cornisa de hormigon sobre el alicatado
+    add_brush(-2150, -650, 104, -2144, 550, 116, tex_sides="con_linesB", face_tex={"+x": "con_linesB"})
+    # Barandillas metalicas sobre las aceras
+    add_rail(-2140, -900, -2140, 900, 5, 42, "metal_grate")
+    add_rail(-1160, -900, -1160, 900, 5, 42, "metal_grate")
+    # Porticos de hormigon en las dos bocas del tunel (arco escalonado)
+    for (pya, pyb, face) in ((-700, -650, "+y"), (550, 600, "-y")):
+        add_brush(-2250, pya, 0, -2150, pyb, 280, tex_sides="con_linesB")      # Pilar oeste
+        add_brush(-1250, pya, 0, -1150, pyb, 280, tex_sides="con_linesB")      # Pilar este
+        add_brush(-2250, pya, 280, -1150, pyb, 320, tex_sides="con_linesB")    # Dintel superior
+        add_brush(-2180, pya, 240, -1220, pyb, 280, tex_sides="con_linesB")    # Arco escalon 1
+        add_brush(-2120, pya, 200, -1280, pyb, 240, tex_sides="con_linesB")    # Arco escalon 2
+    # Rotulo del tunel sobre la boca sur
+    add_brush(-2080, -716, 322, -1820, -700, 356, tex_sides="conc_road_D2",
+              face_tex={"-y": "sign_tunnel", "+y": "sign_tunnel"})
+    # Tiras de luminarias en el techo del tunel
+    for ly in range(-560, 520, 160):
+        add_brush(-2200, ly - 8, 236, -1200, ly + 8, 244,
+                  tex_sides="br_lightGL", tex_top="conc_road_D2", tex_bottom="br_lightGL")
+        add_light(-1700, ly, 214, 250, 226, 178, 420)
+    # Barreras New Jersey continuas que separan los dos carriles del tunel
+    for bx in (-2050, -1850):
+        add_brush(bx - 10, -620, 0, bx + 10, 520, 30, tex_sides="con_linesB",
+                  tex_top="con_linesB", tex_bottom="con_linesB")
+    add_light(-1500, -560, 200, 210, 190, 170, 400)
+    add_light(-1500, 460, 200, 210, 190, 170, 400)
+    add_light(-1900, 600, 120, 190, 175, 150, 380)
+    add_light(-1300, -750, 120, 190, 175, 150, 380)
+
     # Arma de pared del Tunel: M16 / STG-44 (weapon=6, coste 1200)
     add_wall_weapon("ww_tunnel_stg", (-2142, 0, 58), 0, 6, 1200, 600, -2150, -32, 16, -2112, 32, 96)
     add_light(-1850, -300, 210, 255, 165, 95, 460)
@@ -453,6 +637,94 @@ def build_tranzit_world():
     add_light(-1120, 1920, 180, 180, 235, 255, 480)
     add_light(-1960, 1900, 180, 255, 200, 140, 440)
     add_light(-1200, 1400, 175, 255, 220, 160, 500)
+    # --- Detalle arquitectonico del Diner -----------------------------------
+    # Suelo de damero blanco y negro tipico de los diners americanos
+    add_floor(-1522, 1716, -728, 2222, "diner_tile")
+    # Escalones de acceso a la puerta principal del Diner
+    add_floor(-1240, 1640, -1000, 1712, "sidewalk", 0.0, 5.0)
+    # Reservados (booths) a lo largo del muro oeste
+    for by in (1800, 1900, 2000, 2100):
+        add_brush(-1518, by - 40, 0, -1440, by + 40, 20, tex_sides="carpet_64_red", tex_top="carpet_64_red", tex_bottom="carpet_64_red")
+        add_brush(-1518, by - 40, 20, -1506, by + 40, 78, tex_sides="carpet_64_red")
+        add_brush(-1470, by - 40, 0, -1410, by + 40, 20, tex_sides="carpet_64_red")
+        add_brush(-1470, by - 40, 20, -1458, by + 40, 78, tex_sides="carpet_64_red")
+        add_brush(-1470, by - 30, 40, -1410, by + 30, 46, tex_sides="w_wood_dark_64", tex_top="wood_t1", tex_bottom="w_wood_dark_64")
+    # Barra americana: sobre elevado, repisa trasera y cafetera
+    add_brush(-1380, 1960, 42, -900, 2010, 48, tex_sides="m_metal_stG", tex_top="t_floor_blue", tex_bottom="m_metal_stG")
+    add_brush(-1380, 2010, 0, -900, 2030, 132, tex_sides="w_wood_dark_64", tex_top="wood_t1", tex_bottom="w_wood_dark_64")
+    add_brush(-1360, 2030, 132, -920, 2038, 152, tex_sides="metal_stB")
+    # Ventanas iluminadas en la fachada sur y oeste del Diner
+    add_window_row(-1500, -760, 64, 128, "+y", -1712, spacing=110.0)
+    add_window_row(-2120, -1770, 64, 128, "+x", -1518, spacing=110.0)
+    # Luminarias de techo del comedor
+    for lx in (-1420, -1250, -1080, -910):
+        for ly in (1830, 1970, 2110):
+            add_ceiling_lamp(lx, ly, 200)
+    # Gran rotulo DINER en el tejado (visto desde la carretera sur)
+    add_brush(-1400, 1664, 234, -1000, 1680, 268, tex_sides="conc_road_D2",
+              face_tex={"-y": "sign_diner", "+y": "sign_diner"})
+    add_brush(-1420, 1660, 268, -980, 2252, 276, tex_sides="metal_stB", tex_top="shingle_roof", tex_bottom="metal_stB")
+
+    # --- Gasolinera bajo la marquesina --------------------------------------
+    # Islas con surtidores (por encima del techo del autobus: Z<=148)
+    for px in (-1300, -1060):
+        add_brush(px - 60, 1400, 0, px + 60, 1500, 6, tex_sides="sidewalk", tex_top="sidewalk", tex_bottom="sidewalk")
+        add_brush(px - 26, 1418, 6, px + 26, 1482, 56, tex_sides="metal_stB", tex_top="m_metal_stG", tex_bottom="metal_stB")
+        add_brush(px - 30, 1410, 6, px + 30, 1418, 12, tex_sides="danger_stripe", tex_top="danger_stripe", tex_bottom="danger_stripe")
+        add_brush(px - 30, 1482, 6, px + 30, 1490, 12, tex_sides="danger_stripe", tex_top="danger_stripe", tex_bottom="danger_stripe")
+        add_light(px, 1450, 74, 230, 210, 160, 260)
+    # Rotulo de la gasolinera en el faldon sur de la marquesina
+    add_brush(-1430, 1264, 200, -1000, 1280, 232, tex_sides="metal_stB",
+              face_tex={"-y": "sign_diner", "+y": "sign_diner"})
+    # Pilares adicionales de la marquesina (4 en total)
+    add_column(-1300, 1340, 0, 192, size=12.0, tex="metal_stB")
+    add_column(-1060, 1340, 0, 192, size=12.0, tex="metal_stB")
+    # Luminarias bajo la marquesina
+    for lx in (-1300, -1150, -1000):
+        add_ceiling_lamp(lx, 1450, 208)
+
+    # --- Taller / Garaje del Diner ------------------------------------------
+    add_floor(-2222, 1636, -1708, 2192, "metal_grate")
+    # Persiana enrollable sobre el hueco de la puerta del garaje
+    add_brush(-2040, 1600, 160, -1880, 1632, 204, tex_sides="conS6C",
+              face_tex={"-y": "garage_door", "+y": "garage_door"})
+    add_brush(-2040, 1600, 204, -1880, 1632, 216, tex_sides="conS6C")
+    # Banco de trabajo, armarios de herramientas y estanterias
+    add_brush(-2218, 1700, 0, -2060, 1750, 40, tex_sides="metal_stB", tex_top="metal_stB", tex_bottom="metal_stB")
+    add_brush(-2218, 1770, 0, -2060, 1820, 40, tex_sides="metal_stB", tex_top="metal_stB", tex_bottom="metal_stB")
+    add_brush(-2218, 1840, 0, -2060, 1890, 40, tex_sides="metal_stB", tex_top="metal_stB", tex_bottom="metal_stB")
+    add_brush(-2050, 2000, 0, -1960, 2180, 96, tex_sides="metal_stB", tex_top="metal_stB", tex_bottom="metal_stB")
+    add_brush(-1900, 2000, 0, -1810, 2180, 96, tex_sides="metal_stB", tex_top="metal_stB", tex_bottom="metal_stB")
+    # Pilas de neumaticos apilados
+    for tx in (-2180, -2140, -2100):
+        for tz in (0, 14, 28):
+            add_brush(tx - 18, 2100 - 18, tz, tx + 18, 2100 + 18, tz + 14,
+                      tex_sides="m_metal_darkBlu", tex_top="m_metal_darkBlu", tex_bottom="m_metal_darkBlu")
+    # Luminarias industriales del taller
+    for lx in (-2150, -1980, -1810):
+        for ly in (1720, 1900, 2080):
+            add_ceiling_lamp(lx, ly, 208)
+    # Zocalo de ladrillo visto, estanterias y elevador de vehiculos
+    add_brush(-2218, 1636, 0, -2210, 2184, 96, tex_sides="brick_pillar", face_tex={"+x": "brick_pillar"})
+    add_brush(-1716, 1636, 0, -1708, 2184, 96, tex_sides="brick_pillar", face_tex={"-x": "brick_pillar"})
+    add_brush(-2210, 2184, 0, -1708, 2176, 96, tex_sides="brick_pillar", face_tex={"-y": "brick_pillar"})
+    for shz in (0, 48, 96, 144):
+        add_beam(-2214, 2050, -2060, 2060, shz, shz + 8, "w_wood_dark_64")
+    add_brush(-2050, 2050, 0, -1960, 2060, 96, tex_sides="w_wood_dark_64", tex_top="wood_t1", tex_bottom="w_wood_dark_64")
+    add_brush(-1900, 2050, 0, -1810, 2060, 96, tex_sides="w_wood_dark_64", tex_top="wood_t1", tex_bottom="w_wood_dark_64")
+    # Elevador hidraulico de dos columnas
+    for lx2 in (-1900, -1780):
+        add_brush(lx2 - 14, 1660, 0, lx2 + 14, 1688, 200, tex_sides="metal_stB", tex_top="m_metal_stG", tex_bottom="metal_stB")
+    add_beam(-1914, 1652, -1766, 1696, 196, 212, "danger_stripe")
+    # Cartel de peligro y extintor en la pared del taller
+    add_brush(-2210, 1750, 120, -2202, 1830, 168, tex_sides="danger_stripe", face_tex={"+x": "danger_stripe"})
+    add_light(-1900, 1850, 120, 210, 200, 170, 320)
+    # Rotulo GARAGE en la fachada sur del taller
+    add_brush(-2200, 1584, 218, -1900, 1600, 252, tex_sides="conS6C",
+              face_tex={"-y": "sign_garage", "+y": "sign_garage"})
+    add_light(-1120, 1600, 150, 200, 185, 165, 340)
+    add_light(-1700, 1560, 150, 190, 180, 160, 340)
+
     add_ent("spawn_zombie", (-1120, 2120, 40), targetname="z_diner", spawnflags="5")
     add_ent("spawn_zombie", (-1960, 2040, 40), targetname="z_diner", spawnflags="5")
     add_ent("spawn_zombie", (-1620, 1250, 40), targetname="z_depot_ext", spawnflags="5")
@@ -472,6 +744,44 @@ def build_tranzit_world():
     add_wall_weapon("ww_nacht_sniper", (-220, -140, 58), 0, 11, 1500, 750, -228, -172, 16, -190, -108, 96)
     add_wall_weapon("ww_nacht_sawnoff", (220, -140, 58), 180, 21, 1200, 600, 190, -172, 16, 228, -108, 96)
     add_light(0, -130, 160, 220, 195, 150, 420)
+
+    # --- Detalle del maizal y del bunker de Nacht ---------------------------
+    # Sendero de tierra batida que cruza el maizal de sur a norte
+    add_floor(-70, -460, 70, 1150, "debris")
+    # Seis hileras densas de maiz (muros de 16u x 96u de alto) a cada lado
+    for cxr in (-300, -180, -60, 60, 180, 300):
+        add_brush(cxr - 8, 170, 0, cxr + 8, 1140, 96,
+                  tex_sides="corn_wall", tex_top="corn_wall", tex_bottom="corn_wall")
+    # Espolones transversales que rompen la monotonia del maizal
+    for (sx, sy) in ((-230, 380), (-110, 760), (110, 300), (230, 900), (-240, 1020), (240, 560)):
+        add_brush(sx - 60, sy - 8, 0, sx + 60, sy + 8, 96,
+                  tex_sides="corn_wall", tex_top="corn_wall", tex_bottom="corn_wall")
+    # Farolas de sendero (postes de luz calida) para no dejar el maizal a oscuras
+    for ly in (-200, 120, 440, 760, 1040):
+        add_street_lamp(-56, ly)
+        add_light(0, ly, 120, 150, 165, 120, 300)
+    # Escombros y cascotes alrededor del bunker
+    for (rx, ry, rs) in ((-180, 200, 40), (200, 240, 34), (-300, -60, 30), (300, 40, 38), (-150, -300, 26)):
+        add_brush(rx - rs, ry - rs, 0, rx + rs, ry + rs, 8 + rs // 4,
+                  tex_sides="debris", tex_top="debris", tex_bottom="debris")
+    # Rotulo NACHT sobre la entrada norte del bunker
+    add_floor(-228, -348, 228, 120, "debris")
+    add_brush(-140, 124, 218, 140, 140, 252, tex_sides="con_rN",
+              face_tex={"+y": "sign_nacht", "-y": "sign_nacht"})
+    # Ventanas enrejadas en las fachadas laterales del bunker
+    add_window_row(-320, 80, 64, 120, "+x", -228, spacing=110.0, tex="der_riese_windo")
+    add_window_row(-320, 80, 64, 120, "-x", 228, spacing=110.0, tex="der_riese_windo")
+    # Antena de radio en el tejado del bunker
+    add_column(200, -300, 216, 360, size=8.0, tex="m_metal_darkBlu")
+    add_brush(184, -308, 300, 216, -292, 306, tex_sides="m_metal_darkBlu")
+    add_light(200, -300, 330, 220, 60, 50, 220)
+    # Cajas de munición y sacos terreros apilados en el interior
+    add_brush(-210, -330, 0, -170, -290, 32, tex_sides="w_wood_dark_64", tex_top="w_wood_dark_64", tex_bottom="w_wood_dark_64")
+    add_brush(-150, -340, 0, -110, -300, 32, tex_sides="w_wood_dark_64", tex_top="w_wood_dark_64", tex_bottom="w_wood_dark_64")
+    add_brush(-150, -250, 0, -110, -210, 32, tex_sides="w_wood_dark_64", tex_top="w_wood_dark_64", tex_bottom="w_wood_dark_64")
+    add_brush(150, -330, 0, 190, -290, 32, tex_sides="w_wood_dark_64", tex_top="w_wood_dark_64", tex_bottom="w_wood_dark_64")
+    add_light(0, -60, 150, 170, 160, 130, 360)
+
     add_ent("spawn_zombie", (0, -260, 40), targetname="z_depot_ext", spawnflags="5")
 
     # ========================================================================
@@ -514,6 +824,93 @@ def build_tranzit_world():
     add_brush(1680, 1820, 160, 1712, 1980, 208, tex_sides="wall_Owood")
     add_brush(1680, 1980, 0, 1712, 2168, 208, tex_sides="wall_Owood")
 
+    # --- Detalle del Granero Rojo (Barn) ------------------------------------
+    # Solado de tierra prensada y pajar con heno
+    add_floor(1686, 936, 2214, 1384, "debris")
+    # Cumbrera a dos aguas sobre el forjado del granero
+    add_brush(1630, 1040, 264, 2270, 1280, 276, tex_sides="shingle_roof", tex_top="shingle_roof", tex_bottom="shingle_roof")
+    add_brush(1630, 1080, 276, 2270, 1240, 288, tex_sides="shingle_roof", tex_top="shingle_roof", tex_bottom="shingle_roof")
+    add_brush(1630, 1120, 288, 2270, 1200, 300, tex_sides="shingle_roof", tex_top="shingle_roof", tex_bottom="shingle_roof")
+    add_brush(1630, 1150, 300, 2270, 1170, 312, tex_sides="shingle_roof", tex_top="shingle_roof", tex_bottom="shingle_roof")
+    # Ventilador cupular sobre la cumbrera
+    add_brush(1930, 1140, 312, 1970, 1180, 356, tex_sides="wall_Owood", tex_top="shingle_roof", tex_bottom="wall_Owood")
+    # Viga del pajar y riel de la puerta corredera
+    add_beam(1682, 1140, 2218, 1180, 176, 184, "w_wood_dark_64")
+    add_beam(1650, 1050, 1682, 1270, 176, 188, "m_metal_darkBlu")
+    # Pacas de heno apiladas en el pajar
+    for (hx, hy, hz) in ((1760, 1000, 0), (1760, 1000, 40), (1830, 1000, 0), (1760, 1080, 0)):
+        add_brush(hx - 36, hy - 22, hz, hx + 36, hy + 22, hz + 40,
+                  tex_sides="hay_wall", tex_top="hay_wall", tex_bottom="hay_wall")
+    for (hx, hy) in ((2120, 1300), (2180, 1300), (2120, 1240)):
+        add_brush(hx - 36, hy - 22, 0, hx + 36, hy + 22, 40,
+                  tex_sides="hay_wall", tex_top="hay_wall", tex_bottom="hay_wall")
+    # Luminarias colgadas de la cumbrera
+    for lx in (1800, 2000, 2150):
+        add_ceiling_lamp(lx, 1160, 232)
+    add_light(1950, 1160, 96, 210, 190, 150, 380)
+    # Pesebres y separaciones de las cuadras del granero
+    for sy2 in (1010, 1090, 1170, 1250):
+        add_brush(2040, sy2 - 6, 0, 2200, sy2 + 6, 56, tex_sides="w_wood_dark_64", tex_top="wood_t1", tex_bottom="w_wood_dark_64")
+    add_brush(2040, 1330, 0, 2200, 1342, 90, tex_sides="w_wood_dark_64", tex_top="wood_t1", tex_bottom="w_wood_dark_64")
+    # Escalera de mano al pajar y aperos colgados
+    for r in range(9):
+        add_brush(1740, 1330, r * 18, 1760, 1346, r * 18 + 6, tex_sides="w_wood_dark_64", tex_top="w_wood_dark_64", tex_bottom="w_wood_dark_64")
+    add_brush(1712, 1320, 20, 1720, 1356, 22, tex_sides="m_metal_darkBlu", tex_top="m_metal_darkBlu", tex_bottom="m_metal_darkBlu")
+    add_brush(1780, 1320, 20, 1788, 1356, 22, tex_sides="m_metal_darkBlu", tex_top="m_metal_darkBlu", tex_bottom="m_metal_darkBlu")
+    add_brush(1720, 1330, 150, 1780, 1338, 156, tex_sides="metal_stB", tex_top="metal_stB", tex_bottom="metal_stB")
+    add_brush(1720, 1330, 120, 1780, 1338, 126, tex_sides="metal_stB", tex_top="metal_stB", tex_bottom="metal_stB")
+
+    # --- Silo metalico de la granja -----------------------------------------
+    add_brush(2280, 980, 0, 2380, 1080, 320, tex_sides="silo_wall", tex_top="silo_wall", tex_bottom="silo_wall")
+    add_brush(2284, 984, 320, 2376, 1076, 336, tex_sides="silo_wall", tex_top="silo_wall", tex_bottom="silo_wall")
+    add_brush(2300, 1000, 336, 2360, 1060, 356, tex_sides="silo_wall", tex_top="shingle_roof", tex_bottom="silo_wall")
+    add_brush(2312, 1012, 356, 2348, 1048, 372, tex_sides="silo_wall", tex_top="shingle_roof", tex_bottom="silo_wall")
+    for sz in (60, 160, 260):
+        add_brush(2276, 980, sz, 2384, 1084, sz + 6, tex_sides="silo_wall", face_tex={"-x": "silo_wall", "+x": "silo_wall", "-y": "silo_wall", "+y": "silo_wall"})
+
+    # --- Detalle de la Casa de la Granja (Farmhouse) -------------------------
+    add_floor(1716, 1656, 2214, 2164, "w_wood_floor_YB")
+    # Porche de entrada con escalones, postes y barandilla
+    add_floor(1620, 1780, 1716, 2020, "w_wood_dark_64", 0.0, 8.0)
+    add_steps(1570, 1790, 1620, 2010, 8.0, step_h=3.0, tex="w_wood_dark_64", dir_x=True, count=3)
+    add_beam(1610, 1770, 1690, 2030, 112, 124, "shingle_roof")
+    for (px2, py2) in ((1626, 1796), (1626, 2004), (1674, 1796), (1674, 2004)):
+        add_column(px2, py2, 8, 112, size=10.0, tex="wall_Owood")
+    add_rail(1620, 1804, 1620, 1996, 40, 48, "w_wood_dark_64")
+    add_rail(1630, 1770, 1670, 1770, 40, 48, "w_wood_dark_64")
+    # Chimenea de ladrillo sobre el tejado
+    add_brush(2080, 2100, 232, 2140, 2160, 330, tex_sides="brick_pillar", tex_top="brick_pillar", tex_bottom="brick_pillar")
+    # Ventanas iluminadas en la fachada oeste de la casa
+    add_window_row(1700, 2120, 64, 128, "+x", 1712, spacing=120.0)
+    add_window_row(1740, 2140, 64, 128, "-x", 2218, spacing=140.0)
+    # Luminarias del salon y del porche
+    for (lx, ly) in ((1900, 1800), (1900, 2000), (2100, 1900)):
+        add_ceiling_lamp(lx, ly, 200)
+    add_light(1650, 1900, 100, 235, 200, 150, 240)
+
+    # --- Patio de la granja: valla, abrevadero y pacas ----------------------
+    for (fx0, fy0, fx1, fy1) in (
+        (1560, 2350, 2400, 2362), (1560, 860, 1560, 1450), (1560, 1620, 1560, 2380),
+    ):
+        add_brush(min(fx0, fx1) - 6, min(fy0, fy1) - 6, 0, max(fx0, fx1) + 6, max(fy0, fy1) + 6, 88,
+                  tex_sides="fence_wood", tex_top="fence_wood", tex_bottom="fence_wood")
+    # Solado de tierra del patio (evita que se vea la hierva base en la granja)
+    add_floor(1560, 900, 1650, 2350, "debris")
+    add_floor(1650, 1420, 2250, 1620, "debris")
+    add_floor(2250, 900, 2400, 2350, "debris")
+    add_floor(1560, 2200, 2400, 2350, "debris")
+    add_floor(1650, 900, 2250, 940, "debris")
+    # Abrevadero de madera y pacas sueltas en el patio
+    add_brush(1780, 1500, 0, 1900, 1560, 28, tex_sides="w_wood_dark_64", tex_top="w_wood_dark_64", tex_bottom="w_wood_dark_64")
+    for (bx2, by2) in ((1600, 1250), (1600, 1330), (1660, 1290)):
+        add_brush(bx2 - 34, by2 - 22, 0, bx2 + 34, by2 + 22, 40,
+                  tex_sides="hay_wall", tex_top="hay_wall", tex_bottom="hay_wall")
+    # Rotulo FARM sobre el porton de entrada a la granja
+    add_brush(1478, 1410, 192, 1494, 1510, 224, tex_sides="wall_Owood3",
+              face_tex={"-x": "sign_farm", "+x": "sign_farm"})
+    add_light(1600, 1460, 120, 190, 180, 150, 320)
+    add_light(2050, 2100, 120, 180, 170, 140, 300)
+
     add_wall_weapon("ww_farm_thomp", (2210, 1900, 58), 180, 3, 1200, 600, 2180, 1868, 16, 2218, 1932, 96)
     add_ent("mystery_box_tp_spot", (1980, 2110, 36), angles="0 270 0")
 
@@ -542,9 +939,83 @@ def build_tranzit_world():
 
     add_buyable_door("door_power", "z_power", 750, 1584, -240, 0, 1608, -80, 160, tex="ver_metal_door")
 
+    # --- Detalle de la Central Electrica ------------------------------------
+    # Solado tecnico de rejilla metalica
+    add_floor(1616, -1014, 2224, 114, "metal_floor")
+    # Rotulo POWER en la fachada oeste, sobre la puerta comprable
+    add_brush(1564, -300, 234, 1580, -20, 266, tex_sides="facility_contro",
+              face_tex={"-x": "sign_power", "+x": "sign_power"})
+    # Escalones de acceso a la puerta de la central
+    add_floor(1500, -260, 1580, -60, "sidewalk", 0.0, 5.0)
+
     # Nucleo del Reactor en el centro del Laboratorio + Interruptor de Electricidad (power_switch)
-    add_brush(1880, -620, 0, 2000, -500, 232, tex_sides="facility_contro")
+    add_brush(1880, -620, 0, 2000, -500, 232, tex_sides="facility_contro",
+              face_tex={"-x": "reactor_blue", "+x": "reactor_blue",
+                        "-y": "reactor_blue", "+y": "reactor_blue"})
     add_ent("power_switch", (1860, -560, 44), angles="0 180 0")
+    # Pasarela metalica y barandilla alrededor del reactor
+    for (px0, py0, px1, py1) in (
+        (1840, -660, 1880, -460), (2000, -660, 2040, -460),
+        (1880, -660, 2000, -620), (1880, -500, 2000, -460),
+    ):
+        add_brush(px0, py0, 96, px1, py1, 104, tex_sides="metal_grate", tex_top="metal_grate", tex_bottom="metal_grate")
+    add_rail(1832, -664, 2048, -664, 104, 146, "metal_grate")
+    add_rail(1832, -456, 2048, -456, 104, 146, "metal_grate")
+    add_rail(1832, -664, 1832, -456, 104, 146, "metal_grate")
+    add_rail(2048, -664, 2048, -456, 104, 146, "metal_grate")
+    # Escalera de acceso a la pasarela del reactor
+    for i in range(6):
+        add_brush(2050 + i * 22, -560, i * 18, 2072 + i * 22, -480, i * 18 + 18,
+                  tex_sides="metal_grate", tex_top="metal_grate", tex_bottom="metal_grate")
+    # Consolas de control a lo largo del muro sur
+    for cx2 in range(1700, 2150, 90):
+        add_brush(cx2, -1000, 0, cx2 + 70, -940, 48,
+                  tex_sides="facility_contro", tex_top="m_metal_stG", tex_bottom="facility_contro")
+        add_brush(cx2, -1006, 48, cx2 + 70, -1000, 54,
+                  tex_sides="danger_stripe", tex_top="danger_stripe", tex_bottom="danger_stripe")
+        add_brush(cx2, -1000, 96, cx2 + 70, -986, 132,
+                  tex_sides="reactor_blue", tex_top="m_metal_stG", tex_bottom="reactor_blue")
+    # Conductos y bandejas de cables en el techo
+    for py2 in (-880, -700, -520, -340, -200):
+        add_beam(1620, py2 - 8, 2220, py2 + 8, 216, 224, "metal_stB")
+    # Luminarias industriales del laboratorio
+    for lx2 in (1720, 1900, 2080):
+        for ly2 in (-900, -700, -500, -300, -100, 60):
+            add_ceiling_lamp(lx2, ly2, 224)
+    add_light(1940, -560, 150, 90, 180, 255, 520)
+    add_light(1700, -900, 140, 110, 170, 240, 400)
+    add_light(2150, -200, 140, 110, 170, 240, 400)
+
+    # --- Dos torres de refrigeracion al norte del laboratorio ---------------
+    for (tx2, ty2) in ((1780, 420), (2120, 420)):
+        for (z0, z1, half_a, half_b) in ((0, 90, 116, 78), (90, 210, 100, 66), (210, 320, 84, 54)):
+            add_brush(tx2 - half_a, ty2 - half_b, z0, tx2 + half_a, ty2 + half_b, z1,
+                      tex_sides="cooling_tower", tex_top="cooling_tower", tex_bottom="cooling_tower")
+            add_brush(tx2 - half_b, ty2 - half_a, z0, tx2 + half_b, ty2 + half_a, z1,
+                      tex_sides="cooling_tower", tex_top="cooling_tower", tex_bottom="cooling_tower")
+        add_brush(tx2 - 92, ty2 - 92, 320, tx2 + 92, ty2 + 92, 340,
+                  tex_sides="cooling_tower", tex_top="cooling_tower", tex_bottom="cooling_tower")
+        add_brush(tx2 - 70, ty2 - 70, 340, tx2 + 70, ty2 + 70, 352,
+                  tex_sides="cooling_tower", tex_top="cooling_tower", tex_bottom="cooling_tower")
+        add_light(tx2, ty2, 300, 120, 190, 240, 420)
+        add_light(tx2, ty2 - 190, 120, 150, 200, 235, 420)
+        add_light(tx2, ty2 + 190, 120, 150, 200, 235, 420)
+    # Torres de iluminacion del patio norte de la central
+    for (fx2, fy2) in ((1620, 700), (1900, 760), (2180, 700), (1750, 950), (2050, 950)):
+        add_street_lamp(fx2, fy2)
+        add_light(fx2, fy2, 60, 160, 180, 210, 420)
+    # Vallado y apilamiento de material del patio de la central
+    add_brush(1500, 620, 0, 1506, 1000, 88, tex_sides="fence_wood", tex_top="fence_wood", tex_bottom="fence_wood")
+    for (qx, qy) in ((1600, 620), (1650, 640), (1620, 660)):
+        add_brush(qx - 30, qy - 20, 0, qx + 30, qy + 20, 40, tex_sides="w_wood_dark_64", tex_top="wood_t1", tex_bottom="w_wood_dark_64")
+
+    # Transformadores y groupos electrogenos del exterior
+    for (ex, ey) in ((1500, 180), (1500, 380), (1500, 580)):
+        add_brush(ex - 40, ey - 30, 0, ex + 40, ey + 30, 72,
+                  tex_sides="metal_stB", tex_top="m_metal_stG", tex_bottom="metal_stB")
+        add_brush(ex - 44, ey - 34, 72, ex + 44, ey + 34, 80,
+                  tex_sides="danger_stripe", tex_top="danger_stripe", tex_bottom="danger_stripe")
+        add_light(ex, ey, 96, 140, 170, 220, 260)
 
     # Perks en Power Station: Stamin-Up (2000) y Mule Kick (4000) + BAR (weapon=5)
     add_ent(
@@ -587,7 +1058,15 @@ def build_tranzit_world():
     add_brush(-220, -1480, 160, -60, -1448, 208, tex_sides="wall_br_red")
     add_brush(-60, -1480, 0, 218, -1448, 208, tex_sides="wall_br_red")
 
+    # Muro norte del Bar (con hueco de ventana barricada en X[-260..-120])
+    add_brush(-550, -1182, 0, -260, -1150, 208, tex_sides="bricks_r64")
+    add_brush(-260, -1182, 0, -120, -1150, 36, tex_sides="bricks_r64")
+    add_brush(-260, -1182, 128, -120, -1150, 208, tex_sides="bricks_r64")
+    add_brush(-120, -1182, 0, 250, -1150, 208, tex_sides="bricks_r64")
+
     add_buyable_door("door_bar", "z_town", 1000, -220, -1476, 0, -60, -1452, 160, tex="doors_dark")
+    # Ventanas iluminadas del Bar vistas desde el norte (patio trasero)
+    add_window_row(-500, 220, 140, 180, "-y", -1182, spacing=110.0)
 
     # Juggernog y PhD Flopper dentro del Bar
     add_ent(
@@ -636,8 +1115,89 @@ def build_tranzit_world():
     )
     add_ent("mystery_box_tp_spot", (-520, -1960, 36), angles="0 0 0")
 
+    # --- Detalle del Bar de Town --------------------------------------------
+    # Solado de madera del salon y tarima de la barra
+    add_floor(-522, -1452, 222, -1146, "w_wood_dark_64")
+    add_brush(-480, -1310, 0, -280, -1250, 44,
+              tex_sides="w_wood_brown_re", tex_top="wood_t1", tex_bottom="w_wood_brown_re")
+    add_brush(-480, -1250, 44, -280, -1258, 48, tex_sides="m_metal_stG", tex_top="t_floor_blue", tex_bottom="m_metal_stG")
+    add_brush(-480, -1318, 0, -280, -1310, 132, tex_sides="w_wood_dark_64", tex_top="wood_t1", tex_bottom="w_wood_dark_64")
+    for bx3 in range(-460, -300, 34):
+        add_brush(bx3, -1322, 132, bx3 + 8, -1306, 152, tex_sides="g_glass_", tex_top="g_glass_", tex_bottom="g_glass_")
+    # Cornisa y linea de forjado de la fachada de dos plantas
+    for (bz0, bz1, btex) in ((196, 212, "brick_pillar"), (110, 124, "bricks_ak_white")):
+        add_brush(-566, -1496, bz0, 266, -1480, bz1, tex_sides=btex, tex_top=btex, tex_bottom=btex)
+        add_brush(-566, -1496, bz0, -550, -1134, bz1, tex_sides=btex, tex_top=btex, tex_bottom=btex)
+        add_brush(250, -1496, bz0, 266, -1134, bz1, tex_sides=btex, tex_top=btex, tex_bottom=btex)
+    # Ventanas iluminadas de la planta alta (vistas desde la calle)
+    wx = -480.0
+    while wx <= 190.0:
+        add_brush(wx - 20, -1500, 140, wx + 20, -1484, 180,
+                  tex_sides="window_lit", face_tex={"-y": "window_lit"})
+        wx += 110.0
+    # Porche de entrada: escalones, postes y toldo
+    add_floor(-270, -1500, -10, -1482, "w_wood_dark_64", 0.0, 6.0)
+    for px3 in (-250, -30):
+        add_column(px3, -1466, 6, 176, size=10.0, tex="w_wood_dark_64")
+    add_beam(-266, -1500, -14, -1470, 176, 188, "metal_stB")
+    # Rotulo BAR sobre la puerta del bar
+    add_brush(-260, -1516, 192, -20, -1500, 224, tex_sides="conc_road_D2",
+              face_tex={"-y": "sign_bar", "+y": "sign_bar"})
+    # Luminarias y luces del interior del bar
+    for (lx3, ly3) in ((-440, -1240), (-180, -1240), (60, -1240), (-180, -1380)):
+        add_ceiling_lamp(lx3, ly3, 200)
+    add_light(-150, -1300, 140, 235, 190, 120, 380)
+
+    # --- Detalle del Banco (fachada, portico y camara acorazada) -------------
+    add_floor(-622, -2322, 622, -1848, "floor2_gr3x3")
+    add_floor(196, -2322, 618, -1848, "metal_grate")
+    # Mostrador de caja con barrotes verticales
+    add_brush(-500, -2100, 0, 500, -2050, 44, tex_sides="m_metal_stG", tex_top="t_floor_blue", tex_bottom="m_metal_stG")
+    add_brush(-500, -2100, 44, 500, -2092, 48, tex_sides="m_metal_stG", tex_top="t_floor_blue", tex_bottom="m_metal_stG")
+    bx4 = -470.0
+    while bx4 <= 470.0:
+        add_brush(bx4, -2100, 48, bx4 + 6, -2094, 132, tex_sides="metal_stB", tex_top="metal_stB", tex_bottom="metal_stB")
+        bx4 += 60.0
+    # Portico: escalones, 4 columnas y fronton escalonado
+    add_floor(-290, -1820, 90, -1802, "sidewalk", 0.0, 6.0)
+    for cx3 in (-250, -200, 0, 50):
+        add_column(cx3, -1812, 6, 200, size=20.0, tex="brick_pillar")
+    add_brush(-290, -1820, 200, 90, -1804, 212, tex_sides="bricks_ak_white", tex_top="bricks_ak_white", tex_bottom="bricks_ak_white")
+    add_brush(-250, -1820, 212, 50, -1804, 224, tex_sides="bricks_ak_white", tex_top="bricks_ak_white", tex_bottom="bricks_ak_white")
+    add_brush(-210, -1820, 224, 10, -1804, 236, tex_sides="bricks_ak_white", tex_top="bricks_ak_white", tex_bottom="bricks_ak_white")
+    # Rotulo BANK sobre la puerta principal del banco
+    add_brush(-180, -1824, 168, -20, -1808, 200, tex_sides="bricks_ak_white",
+              face_tex={"-y": "sign_bank", "+y": "sign_bank"})
+    # Ventanas de las fachadas oeste y este del banco
+    wy = -2290.0
+    while wy <= -1890.0:
+        add_brush(-666, wy - 20, 64, -650, wy + 20, 128, tex_sides="window_lit", face_tex={"-x": "window_lit"})
+        add_brush(650, wy - 20, 64, 666, wy + 20, 128, tex_sides="window_lit", face_tex={"+x": "window_lit"})
+        wy += 140.0
+    # Cornisa superior del banco
+    for (bz0, bz1) in ((226, 240), (130, 144)):
+        add_brush(-666, -2366, bz0, 666, -2350, bz1, tex_sides="bricks_ak_white", tex_top="bricks_ak_white", tex_bottom="bricks_ak_white")
+        add_brush(-666, -2366, bz0, -650, -1810, bz1, tex_sides="bricks_ak_white", tex_top="bricks_ak_white", tex_bottom="bricks_ak_white")
+        add_brush(650, -2366, bz0, 666, -1810, bz1, tex_sides="bricks_ak_white", tex_top="bricks_ak_white", tex_bottom="bricks_ak_white")
+    # Luminarias del vestibulo y de la camara
+    for (lx4, ly4) in ((-450, -1950), (-100, -1950), (300, -1950), (-450, -2250), (400, -2250)):
+        add_ceiling_lamp(lx4, ly4, 216)
+    add_light(400, -2080, 140, 190, 210, 255, 400)
+
+    # --- Alumbrado publico de la calle principal de Town --------------------
+    for lx5 in (-1300, -1000, -800):
+        add_street_lamp(lx5, -1490)
+    for lx5 in (450, 750, 1050):
+        add_street_lamp(lx5, -1490)
+    for lx5 in (-1300, -1000, -800, 800, 1050, 1300):
+        add_street_lamp(lx5, -1830)
+    for lx6 in (-1200, -800, -400, 0, 400, 800, 1200):
+        add_light(lx6, -1660, 200, 195, 186, 140, 520)
+        add_light(lx6, -1790, 140, 170, 168, 132, 420)
+    add_light(-150, -1600, 90, 230, 195, 130, 420)
+
     # Grietas centrales de lava en Town + Farola Verde #5 + luces + spawners
-    add_lava_pit(-140, -1740, 120, -1560)
+    add_lava_pit(700, -1740, 900, -1560)
     add_lava_pit(-880, -1720, -680, -1520)
     add_ent("tranzit_lamp_tp", (420, -1520, 40), targetname="lamp_town", target="lamp_depot", message="BUS DEPOT")
     add_light(420, -1520, 110, 60, 255, 90, 320)
@@ -652,37 +1212,72 @@ def build_tranzit_world():
     # ========================================================================
     # AUTOBUS EN MOVIMIENTO DE TRANZIT (func_tranzit_bus) Y RUTA DE 8 PARADAS
     # ========================================================================
-    # Construimos el modelo del autobus en coordenadas locales [0..160] x [0..112] x [0..44]
-    # Suelo de 12u de grosor (para poder subir a pie sin siquiera saltar) + barandillas
-    # delanteras/traseras que mantienen al jugador dentro durante el trayecto.
-    bus_brushes = [
-        # Plataforma base del autobus
-        BoxBrush(0, 0, 0, 160, 112, 12, "metal_floor", "m_metal_darkBlu", "bus_metal"),
-        # Cabina delantera (T.E.D.D.) y parachoques trasero
-        BoxBrush(144, 0, 12, 160, 112, 46, "bus_metal", "bus_metal", "bus_metal"),
-        BoxBrush(0, 0, 12, 16, 112, 44, "bus_metal", "bus_metal", "bus_metal"),
-        # Barandillas laterales en las esquinas (dejando puertas anchas de 80u en el centro)
-        BoxBrush(16, 0, 12, 40, 12, 42, "bus_metal", "bus_metal", "bus_metal"),
-        BoxBrush(120, 0, 12, 144, 12, 42, "bus_metal", "bus_metal", "bus_metal"),
-        BoxBrush(16, 100, 12, 40, 112, 42, "bus_metal", "bus_metal", "bus_metal"),
-        BoxBrush(120, 100, 12, 144, 112, 42, "bus_metal", "bus_metal", "bus_metal"),
-    ]
+    # Autobus de Tranzit (T.E.D.D.) a escala real en coordenadas locales
+    # [0..160] x [0..112] x [0..148]: piso a 14u (escalon de 8u desde el
+    # anden), ventanillas corridas, techo a 136u, cabina, quitanieve y faros.
+    BUS_FLOOR = 14.0
+    BUS_BELT = 52.0        # Cintura inferior de las ventanillas
+    BUS_ROOF = 136.0
+    SOLID_X = ((0.0, 30.0), (56.0, 104.0), (130.0, 160.0))   # Tramos de chapa
+    PILLAR_X = ((0.0, 12.0), (18.0, 30.0), (56.0, 68.0),
+                (92.0, 104.0), (130.0, 142.0), (148.0, 160.0))
+
+    bus_brushes: List[BoxBrush] = []
+    # Piso y rodadura
+    bus_brushes.append(BoxBrush(0, 0, 0, 160, 112, BUS_FLOOR, "metal_floor", "m_metal_darkBlu", "bus_metal"))
+    # Panel de cola y mampara delantera de la cabina
+    bus_brushes.append(BoxBrush(0, 0, BUS_FLOOR, 8, 112, BUS_ROOF, "bus_side", "bus_side", "bus_side"))
+    bus_brushes.append(BoxBrush(148, 0, BUS_FLOOR, 160, 112, BUS_ROOF, "bus_side", "bus_side", "bus_side"))
+    # Laterales: chapa inferior, cintura de ventanillas, montantes y larguero
+    for (sx0, sx1) in SOLID_X:
+        for (sy0, sy1) in ((0.0, 6.0), (106.0, 112.0)):
+            bus_brushes.append(BoxBrush(sx0, sy0, BUS_FLOOR, sx1, sy1, BUS_BELT, "bus_side", "bus_side", "bus_side"))
+            bus_brushes.append(BoxBrush(sx0, sy0, BUS_BELT, sx1, sy1, BUS_BELT + 6, "bus_metal", "bus_metal", "bus_metal"))
+    for (sx0, sx1) in PILLAR_X:
+        for (sy0, sy1) in ((0.0, 6.0), (106.0, 112.0)):
+            bus_brushes.append(BoxBrush(sx0, sy0, BUS_BELT + 6, sx1, sy1, BUS_ROOF, "bus_metal", "bus_metal", "bus_metal"))
+    # Techo (con luz interior) y escotilla de evacuacion
+    bus_brushes.append(BoxBrush(6, 6, BUS_ROOF, 154, 106, 148, "bus_metal", "bus_metal", "bus_metal"))
+    bus_brushes.append(BoxBrush(70, 46, 148, 90, 66, 156, "bus_metal", "bus_metal", "bus_metal"))
+    # Capo delantero, quitanieve escalonado y parachoques trasero
+    bus_brushes.append(BoxBrush(144, 8, BUS_FLOOR, 152, 104, 44, "bus_side", "bus_side", "bus_side"))
+    bus_brushes.append(BoxBrush(152, 2, 0, 157, 110, 32, "bus_metal", "bus_metal", "bus_metal"))
+    bus_brushes.append(BoxBrush(157, 10, 0, 160, 102, 22, "bus_metal", "bus_metal", "bus_metal"))
+    bus_brushes.append(BoxBrush(0, 2, 0, 5, 110, 30, "bus_metal", "bus_metal", "bus_metal"))
+    # Faros delanteros y pilotos traseros (texturas emisivas)
+    for by in (16.0, 84.0):
+        bus_brushes.append(BoxBrush(156, by, 34, 160, by + 14, 48, "bus_headlight", "bus_headlight", "bus_headlight"))
+        bus_brushes.append(BoxBrush(0, by, 34, 4, by + 14, 48, "bus_tail", "bus_tail", "bus_tail"))
+    # Bancos corridos y respaldos del habitaculo (a ambos lados del pasillo)
+    for bxx in (34.0, 58.0, 84.0, 108.0):
+        bus_brushes.append(BoxBrush(bxx, 8, BUS_FLOOR, bxx + 20, 32, BUS_FLOOR + 18,
+                                    "carpet_64_red", "carpet_64_red", "carpet_64_red"))
+        bus_brushes.append(BoxBrush(bxx, 8, BUS_FLOOR + 18, bxx + 20, 13, BUS_FLOOR + 44,
+                                    "carpet_64_red", "carpet_64_red", "carpet_64_red"))
+        bus_brushes.append(BoxBrush(bxx, 80, BUS_FLOOR, bxx + 20, 104, BUS_FLOOR + 18,
+                                    "carpet_64_red", "carpet_64_red", "carpet_64_red"))
+        bus_brushes.append(BoxBrush(bxx, 99, BUS_FLOOR + 18, bxx + 20, 104, BUS_FLOOR + 44,
+                                    "carpet_64_red", "carpet_64_red", "carpet_64_red"))
+    # Barra longitudinal interior para agarrarse
+    bus_brushes.append(BoxBrush(14, 54, 118, 146, 58, 124, "metal_stB", "metal_stB", "metal_stB"))
     add_submodel(
         "func_tranzit_bus",
         bus_brushes,
         {"target": "bus_stop_1", "speed": "210", "dmg": "500"},
     )
 
-    # Nodos path_corner del circuito completo del Autobus de Tranzit
+    # Nodos path_corner del circuito rectangular del Autobus de Tranzit
+    # (el autobus se traslada sin girar, asi que las paradas forman un rectangulo
+    #  despejado: pasa bajo el tunel y bajo la marquesina de la gasolinera)
     bus_stops = [
-        ("bus_stop_1", "bus_stop_2", (-1420, -1380, 2), 25, "BUS DEPOT"),
-        ("bus_stop_2", "bus_stop_3", (-1420, 0, 2), 8, "HIGHWAY TUNNEL"),
-        ("bus_stop_3", "bus_stop_4", (-1420, 1180, 2), 25, "DINER & GARAGE"),
-        ("bus_stop_4", "bus_stop_5", (0, 1220, 2), 8, "CORNFIELD CROSSROADS"),
-        ("bus_stop_5", "bus_stop_6", (1220, 1220, 2), 25, "FARM"),
-        ("bus_stop_6", "bus_stop_7", (1220, -180, 2), 25, "POWER STATION"),
-        ("bus_stop_7", "bus_stop_8", (1220, -1380, 2), 6, "SOUTH HIGHWAY"),
-        ("bus_stop_8", "bus_stop_1", (160, -1660, 2), 25, "TOWN (BANK & BAR)"),
+        ("bus_stop_1", "bus_stop_2", (-1500, -1720, 2), 25, "BUS DEPOT"),
+        ("bus_stop_2", "bus_stop_3", (-1500, 200, 2), 8, "HIGHWAY TUNNEL"),
+        ("bus_stop_3", "bus_stop_4", (-1500, 1240, 2), 25, "DINER & GARAGE"),
+        ("bus_stop_4", "bus_stop_5", (0, 1240, 2), 8, "CORNFIELD CROSSROADS"),
+        ("bus_stop_5", "bus_stop_6", (1240, 1240, 2), 25, "FARM"),
+        ("bus_stop_6", "bus_stop_7", (1240, -180, 2), 25, "POWER STATION"),
+        ("bus_stop_7", "bus_stop_8", (1240, -1720, 2), 6, "SOUTH HIGHWAY"),
+        ("bus_stop_8", "bus_stop_1", (0, -1720, 2), 25, "TOWN (BANK & BAR)"),
     ]
     for tname, next_t, org, wait_s, msg in bus_stops:
         add_ent("path_corner", org, targetname=tname, target=next_t, wait=wait_s, message=msg)
@@ -740,6 +1335,74 @@ def build_tranzit_world():
     add_prop("models/props/Kino_couch.mdl", (-150, -1210, 20), 270)
     add_prop("models/props/table_sq.mdl", (-360, -2100, 20), 0)
     add_prop("models/props/jeep.mdl", (340, -1680, 20), 165)
+    add_prop("models/props/metal_chair.mdl", (-420, -1180, 20), 90)
+    add_prop("models/props/metal_chair.mdl", (-370, -1200, 20), 45)
+    add_prop("models/props/table_dinner.mdl", (-330, -1250, 20), 0)
+    add_prop("models/props/table_dinner.mdl", (60, -1250, 20), 0)
+    add_prop("models/props/radio.mdl", (-500, -1290, 34), 270)
+    add_prop("models/props/vanity_table.mdl", (-100, -2080, 20), 90)
+    add_prop("models/props/shelf.mdl", (-560, -1980, 20), 0)
+    add_prop("models/props/shelf.mdl", (-560, -2060, 20), 0)
+    add_prop("models/props/container.mdl", (900, -1300, 32), 0)
+    add_prop("models/props/trash_con.mdl", (-1000, -1700, 20), 45)
+    add_prop("models/props/Barrel_m.mdl", (-1150, -1700, 20), 0)
+    add_prop("models/props/treeSL.mdl", (-1250, -1600, 16), 0)
+    add_prop("models/props/treeTH.mdl", (1150, -1700, 16), 40)
+
+    # 8. Bus Depot (extras): maletas, cajas y carretilla en el anden
+    add_prop("models/props/Kino_boxes3.mdl", (-1460, -2000, 10), 20)
+    add_prop("models/props/Kino_boxes4.mdl", (-1300, -2060, 10), 70)
+    add_prop("models/props/MopBucket.mdl", (-2180, -1660, 20), 0)
+    add_prop("models/props/stand.mdl", (-2050, -1660, 20), 180)
+    add_prop("models/props/sandbags.mdl", (-1420, -1960, 8), 0)
+
+    # 9. Highway Tunnel (extras): neumaticos, bidones y senalizacion
+    add_prop("models/props/Barrel_m.mdl", (-1600, -420, 20), 0)
+    add_prop("models/props/Barrel_m.mdl", (-1600, -360, 20), 30)
+    add_prop("models/props/rebar.mdl", (-2090, 300, 16), 20)
+    add_prop("models/props/derped/ammo_can.mdl", (-2050, 420, 16), 0)
+    add_prop("models/props/jeep_hl.mdl", (-1980, -520, 20), 15)
+
+    # 10. Diner & Garage (extras): sillas, neveras y herramientas
+    add_prop("models/props/metal_chair.mdl", (-1240, 1880, 20), 180)
+    add_prop("models/props/metal_chair.mdl", (-1040, 1880, 20), 180)
+    add_prop("models/props/table_dinner.mdl", (-760, 1900, 20), 90)
+    add_prop("models/props/flame.mdl", (-1180, 1450, 8), 0)
+    add_prop("models/props/derped/pumpkin_1.mdl", (-1000, 1280, 8), 0)
+    add_prop("models/props/derped/pumpkin_2.mdl", (-960, 1270, 8), 90)
+    add_prop("models/props/derped/pumpkin_3.mdl", (-920, 1285, 8), 200)
+    add_prop("models/props/Kino_boxes2.mdl", (-2160, 1660, 20), 0)
+    add_prop("models/props/Barrel_m.mdl", (-1760, 1700, 20), 0)
+    add_prop("models/props/flag_usa.mdl", (-1520, 2200, 20), 270)
+    add_prop("models/props/radiator.mdl", (-2120, 2150, 20), 90)
+
+    # 11. Maizal y Nacht (extras): arboles y restos
+    add_prop("models/props/tree_ch.mdl", (-250, 1000, 16), 0)
+    add_prop("models/props/tree_ch.mdl", (250, 1000, 16), 180)
+    add_prop("models/props/treeSL.mdl", (300, -100, 16), 90)
+    add_prop("models/props/bodybag_flat.mdl", (-60, 60, 10), 30)
+    add_prop("models/props/dummy.mdl", (180, -80, 20), 200)
+    add_prop("models/props/derped/ammo_can.mdl", (-180, -60, 16), 120)
+
+    # 12. Granja (extras): aperos, muebles y animales disecados
+    add_prop("models/props/oven.mdl", (2180, 1700, 24), 180)
+    add_prop("models/props/fridge.mdl", (1730, 2100, 28), 0)
+    add_prop("models/props/table_sq.mdl", (1900, 1760, 10), 0)
+    add_prop("models/props/metal_chair.mdl", (1900, 1720, 10), 180)
+    add_prop("models/props/metal_chair.mdl", (1900, 1800, 10), 0)
+    add_prop("models/props/derped/pumpkin_1.mdl", (1620, 1700, 8), 0)
+    add_prop("models/props/derped/pumpkin_2.mdl", (1640, 1720, 8), 90)
+    add_prop("models/props/treeSL.mdl", (2320, 1300, 16), 0)
+    add_prop("models/props/treeTH.mdl", (1200, 1050, 16), 45)
+    add_prop("models/props/radiator.mdl", (2200, 1680, 20), 270)
+
+    # 13. Central Electrica (extras): consolas, bidones y cajas fuertes
+    add_prop("models/props/mainframe_pad.mdl", (1700, -960, 32), 0)
+    add_prop("models/props/mainframe_pad.mdl", (1820, -960, 32), 0)
+    add_prop("models/props/Barrel_m.mdl", (2160, -880, 20), 0)
+    add_prop("models/props/Barrel_m.mdl", (2160, -820, 20), 25)
+    add_prop("models/props/Kino_boxes4.mdl", (1660, -180, 20), 90)
+    add_prop("models/props/dentist_chair.mdl", (2050, -980, 20), 180)
 
     # ========================================================================
     # RED DE WAYPOINTS (.WAY) CONECTANDO LAS 6 ZONAS Y SUS PUERTAS COMPRABLES
@@ -813,7 +1476,7 @@ def brush_to_quads(b: BoxBrush, max_span: float = 768.0) -> List[QuadFace]:
     quads: List[QuadFace] = []
 
     def subdivide_rect(axis: int, dist: float, side: int, u0: float, v0: float, u1: float, v1: float, tex: str):
-        fullbright = (255, 165, 65) if tex == "lava_cracks" else None
+        fullbright = FULLBRIGHT_TEXTURES.get(tex)
         step = max_span
         nu = max(1, int(math.ceil((u1 - u0) / step)))
         nv = max(1, int(math.ceil((v1 - v0) / step)))
@@ -1006,6 +1669,30 @@ def compile_bsp30(
     face_meta: List[Tuple[int, Tuple[float, float, float, float, float, float]]] = []
     lighting_data = bytearray()
 
+    # Rejilla espacial de luces: evita recorrer todos los focos por cada muestra
+    # del lightmap (con ~200 luces el coste seria prohibitivo sin esta poda).
+    LIGHT_CELL = 400.0
+    light_grid: Dict[Tuple[int, int], List[int]] = {}
+
+    def gidx(v: float) -> int:
+        return int(math.floor(v / LIGHT_CELL))
+
+    for li, pl in enumerate(lights):
+        for gx in range(gidx(pl.x - pl.radius), gidx(pl.x + pl.radius) + 1):
+            for gy in range(gidx(pl.y - pl.radius), gidx(pl.y + pl.radius) + 1):
+                light_grid.setdefault((gx, gy), []).append(li)
+
+    def lights_for_bbox(bminx: float, bminy: float, bmaxx: float, bmaxy: float) -> List[PointLight]:
+        seen: set = set()
+        out: List[PointLight] = []
+        for gx in range(gidx(bminx), gidx(bmaxx) + 1):
+            for gy in range(gidx(bminy), gidx(bmaxy) + 1):
+                for li in light_grid.get((gx, gy), ()):
+                    if li not in seen:
+                        seen.add(li)
+                        out.append(lights[li])
+        return out
+
     def sample_lightmap_for_quad(q: QuadFace, ti_idx: int) -> int:
         if q.tex_name.startswith("sky"):
             return -1
@@ -1020,6 +1707,17 @@ def compile_bsp30(
         smax = (bmax_s - bmin_s) + 1
         tmax = (bmax_t - bmin_t) + 1
 
+        if q.axis == 0:      # Plano X: la Y sale de (u0..u1)
+            q_bx0, q_bx1 = q.dist, q.dist
+            q_by0, q_by1 = min(q.u0, q.u1), max(q.u0, q.u1)
+        elif q.axis == 1:    # Plano Y: la X sale de (u0..u1)
+            q_bx0, q_bx1 = min(q.u0, q.u1), max(q.u0, q.u1)
+            q_by0, q_by1 = q.dist, q.dist
+        else:                # Plano Z: X de u y Y de v
+            q_bx0, q_bx1 = min(q.u0, q.u1), max(q.u0, q.u1)
+            q_by0, q_by1 = min(q.v0, q.v1), max(q.v0, q.v1)
+        near_lights = lights_for_bbox(q_bx0, q_by0, q_bx1, q_by1)
+
         while len(lighting_data) % 3 != 0:
             lighting_data.append(0)
         lightofs = len(lighting_data)
@@ -1030,8 +1728,8 @@ def compile_bsp30(
                 lighting_data.extend((r0, g0, b0))
             return lightofs
 
-        # Luz ambiental base de Tranzit (nocturna con tinte azulado/verdoso suave)
-        amb_r, amb_g, amb_b = 34.0, 38.0, 44.0
+        # Luz ambiental base de Tranzit (noche cerrada con tinte azul verdoso)
+        amb_r, amb_g, amb_b = 50.0, 55.0, 64.0
         for it in range(tmax):
             t_tex = (bmin_t + it) * 16.0
             for is_ in range(smax):
@@ -1045,12 +1743,13 @@ def compile_bsp30(
                     wx, wy, wz = s_tex * 4.0, -t_tex * 4.0, q.dist
 
                 lr, lg, lb = amb_r, amb_g, amb_b
-                for pl in lights:
+                for pl in near_lights:
                     dx = wx - pl.x
                     dy = wy - pl.y
                     dz = wz - pl.z
-                    dist = math.sqrt(dx * dx + dy * dy + dz * dz)
-                    if dist < pl.radius:
+                    d2 = dx * dx + dy * dy + dz * dz
+                    if d2 < pl.radius * pl.radius:
+                        dist = math.sqrt(d2)
                         att = (1.0 - dist / pl.radius) ** 1.6
                         lr += pl.r * att * 0.45
                         lg += pl.g * att * 0.45
@@ -1100,6 +1799,12 @@ def compile_bsp30(
         bounds: Tuple[float, float, float, float, float, float],
         depth: int = 0,
     ) -> int:
+        """Arbol de clipnodes con seleccion de plano por SAH (Surface Area Heuristic).
+
+        Elegir el plano que menos cajas atraviesa (en lugar del mas cercano al
+        centro) reduce los clipnodes de ~19.000 a ~2.300 por hull, lo que permite
+        muchisimo mas detalle geometrico sin superar MAX_MAP_CLIPNODES (32767).
+        """
         x0, y0, z0, x1, y1, z1 = bounds
         eps = 0.05
         active = []
@@ -1119,32 +1824,36 @@ def compile_bsp30(
                 return CONTENTS_SOLID
             active.append(b)
 
-        if not active or depth > 28:
+        if not active or depth > 64:
             return CONTENTS_EMPTY
 
-        # Elegir el plano de corte mas cercano al centro de la celda
-        best_axis = -1
-        best_coord = 0.0
-        best_score = 1e18
-        rmins = (x0, y0, z0)
-        rmaxs = (x1, y1, z1)
-        spans = (x1 - x0, y1 - y0, z1 - z0)
-
+        n = len(active)
+        best: Optional[Tuple[float, int, float]] = None
         for axis in (0, 1, 2):
-            lo, hi = rmins[axis], rmaxs[axis]
+            lo, hi = bounds[axis], bounds[axis + 3]
+            if hi - lo < 2.0:
+                continue
+            mins = sorted(b[axis] for b in active)
+            maxs = sorted(b[axis + 3] for b in active)
+            cands = sorted({v for b in active for v in (b[axis], b[axis + 3]) if lo + 0.5 < v < hi - 0.5})
+            if not cands:
+                continue
+            if len(cands) > 48:
+                step = len(cands) / 48.0
+                cands = [cands[int(i * step)] for i in range(48)]
             mid = 0.5 * (lo + hi)
-            for b in active:
-                for val in (b[axis], b[axis + 3]):
-                    if lo + 0.5 < val < hi - 0.5:
-                        score = abs(val - mid) / max(1.0, spans[axis])
-                        if score < best_score:
-                            best_score = score
-                            best_axis = axis
-                            best_coord = val
+            for v in cands:
+                n_left = bisect.bisect_right(maxs, v)
+                n_right = n - bisect.bisect_left(mins, v)
+                n_straddle = n - n_left - n_right
+                cost = (n_left + n_right) + 4.0 * n_straddle + 0.001 * abs(v - mid)
+                if best is None or cost < best[0]:
+                    best = (cost, axis, v)
 
-        if best_axis < 0:
+        if best is None:
             return CONTENTS_SOLID
 
+        _cost, best_axis, best_coord = best
         b_front = list(bounds)
         b_back = list(bounds)
         b_front[best_axis] = best_coord
@@ -1165,7 +1874,9 @@ def compile_bsp30(
             (b.xmin - hx, b.ymin - hy, b.zmin - hz, b.xmax + hx, b.ymax + hy, b.zmax + hz)
             for b in brushes
         ]
+        before = len(clipnodes)
         idx = build_clip_kdtree(expanded, (-3200.0, -3200.0, -1024.0, 3200.0, 3200.0, 1024.0))
+        print(f"[INFO]   Hull({hx},{hy},{hz}): {len(clipnodes) - before} clipnodes")
         if idx < 0:
             pnum = get_plane_idx(2, -2048.0)
             idx = len(clipnodes)
@@ -1319,7 +2030,7 @@ def compile_bsp30(
                 return -1  # CONTENTS_SOLID leaf 0
             active.append(b)
 
-        if not active or depth > 26:
+        if not active or depth > 32:
             leaf_idx = len(leafs)
             leafs.append(
                 struct.pack(
@@ -1334,43 +2045,43 @@ def compile_bsp30(
             )
             return -1 - leaf_idx
 
-        best_axis = -1
-        best_coord = 0.0
-        best_score = 1e18
-        rmins = (x0, y0, z0)
-        rmaxs = (x1, y1, z1)
-        spans = (x1 - x0, y1 - y0, z1 - z0)
-
+        # Seleccion del plano de corte por SAH (Surface Area Heuristic): elegir el
+        # plano que menos cajas atraviesa en lugar del mas cercano al centro.
+        # Con el detalle actual del mapa esto baja LUMP_NODES de ~30.000 a ~10.000,
+        # dejando margen holgado frente a MAX_MAP_NODES (32767).
+        n = len(active)
+        best: Optional[Tuple[float, int, float]] = None
         for axis in (0, 1, 2):
-            lo, hi = rmins[axis], rmaxs[axis]
+            lo, hi = bounds[axis], bounds[axis + 3]
+            if hi - lo < 2.0:
+                continue
+            mins = sorted(b[axis] for b in active)
+            maxs = sorted(b[axis + 3] for b in active)
+            cands = sorted({v for b in active for v in (b[axis], b[axis + 3]) if lo + 0.5 < v < hi - 0.5})
+            if not cands:
+                continue
+            if len(cands) > 48:
+                step = len(cands) / 48.0
+                cands = [cands[int(i * step)] for i in range(48)]
             mid = 0.5 * (lo + hi)
-            for b in active:
-                for val in (b[axis], b[axis + 3]):
-                    if lo + 0.5 < val < hi - 0.5:
-                        score = abs(val - mid) / max(1.0, spans[axis])
-                        if score < best_score:
-                            best_score = score
-                            best_axis = axis
-                            best_coord = val
+            for v in cands:
+                n_left = bisect.bisect_right(maxs, v)
+                n_right = n - bisect.bisect_left(mins, v)
+                n_straddle = n - n_left - n_right
+                cost = (n_left + n_right) + 4.0 * n_straddle + 0.001 * abs(v - mid)
+                if best is None or cost < best[0]:
+                    best = (cost, axis, v)
 
-        if best_axis < 0:
+        if best is None:
             return -1
+        _cost, best_axis, best_coord = best
 
         pnum = get_plane_idx(best_axis, best_coord)
         node_idx = len(nodes)
         # Ampliar minmaxs del nodo a todo el mapa para que ninguna cara asociada a este plano
         # sea descartada por R_CullBox cuando el plano aparece en otra rama
         nodes.append([pnum, -1, -1, [-2600, -2600, -256], [2600, 2600, 640], 0, 0])
-
-        if pnum in quads_by_plane and pnum not in emitted_planes:
-            emitted_planes.add(pnum)
-            qlist = quads_by_plane[pnum]
-            ff = len(faces)
-            for q in qlist:
-                emit_quad_face(q)
-            nf = len(faces) - ff
-            nodes[node_idx][5] = ff
-            nodes[node_idx][6] = nf
+        node_cells.append(bounds)
 
         b_front = list(bounds)
         b_back = list(bounds)
@@ -1383,23 +2094,64 @@ def compile_bsp30(
         nodes[node_idx][2] = c_back
         return node_idx
 
+    node_cells: List[Tuple[float, float, float, float, float, float]] = []
     world_headnode0 = build_spatial_world_bsp(world_boxes_h0, (-2600.0, -2600.0, -256.0, 2600.0, 2600.0, 640.0))
     assert world_headnode0 == 0
 
-    # Si algun plano con caras no fue usado como primer corte, emitir sus caras igualmente
+    # Asignacion de caras a nodos.
+    # Cada nodo solo puede referenciar un rango CONTIGUO de caras (firstsurface,
+    # numsurfaces), asi que primero elegimos a que nodo va cada grupo de caras que
+    # comparte plano y despues emitimos las caras ordenadas por nodo.
+    #   1) Si existe un nodo cuyo plano de corte es exactamente el plano de las caras,
+    #      se usa ese (es lo que hacen los compiladores reales).
+    #   2) Si no, se busca el nodo mas profundo cuya celda contiene el centro del grupo.
+    # Asi ninguna cara se queda huerfana y R_MarkLights sigue podando por el arbol.
+    plane_first_node: Dict[int, int] = {}
+    for nd_i, nd in enumerate(nodes):
+        if nd[0] not in plane_first_node:
+            plane_first_node[nd[0]] = nd_i
+
+    def pick_node_for_group(qlist) -> int:
+        """Nodo mas profundo cuya celda contiene el centro del grupo de caras."""
+        acc = [0.0, 0.0, 0.0]
+        for q in qlist:
+            u = (0, 1, 2)
+            others = [a for a in u if a != q.axis]
+            pt = [0.0, 0.0, 0.0]
+            pt[q.axis] = q.dist
+            pt[others[0]] = 0.5 * (q.u0 + q.u1)
+            pt[others[1]] = 0.5 * (q.v0 + q.v1)
+            acc[0] += pt[0]
+            acc[1] += pt[1]
+            acc[2] += pt[2]
+        n = max(1, len(qlist))
+        px, py, pz = acc[0] / n, acc[1] / n, acc[2] / n
+        ni = 0
+        for _ in range(64):
+            _nx, _ny, _nz, dist, axis = planes[nodes[ni][0]]
+            coord = px if axis == 0 else (py if axis == 1 else pz)
+            child = nodes[ni][1] if coord >= dist else nodes[ni][2]
+            if child < 0:
+                break
+            ni = child
+        return ni
+
+    node_face_planes: Dict[int, List[int]] = {}
     for pnum, qlist in quads_by_plane.items():
-        if pnum not in emitted_planes:
-            emitted_planes.add(pnum)
-            ff = len(faces)
-            for q in qlist:
+        target = plane_first_node.get(pnum)
+        if target is None:
+            target = pick_node_for_group(qlist)
+        node_face_planes.setdefault(target, []).append(pnum)
+
+    for nd_i in sorted(node_face_planes.keys()):
+        ff = len(faces)
+        for pnum in node_face_planes[nd_i]:
+            for q in quads_by_plane[pnum]:
                 emit_quad_face(q)
-            nf = len(faces) - ff
-            # Buscar cualquier nodo con ese planenum
-            for nd in nodes:
-                if nd[0] == pnum and nd[6] == 0:
-                    nd[5] = ff
-                    nd[6] = nf
-                    break
+        nf = len(faces) - ff
+        if nf:
+            nodes[nd_i][5] = ff
+            nodes[nd_i][6] = nf
 
     world_numfaces = len(faces)
     world_visleafs = len(leafs) - 1
@@ -1526,6 +2278,11 @@ def compile_bsp30(
     lump_texinfo = b"".join(struct.pack("<8fii", *ti) for ti in texinfos)
     lump_faces = b"".join(faces)
     lump_lighting = bytes(lighting_data)
+    if len(clipnodes) > MAX_MAP_CLIPNODES:
+        raise SystemExit(
+            f"[ERROR] {len(clipnodes)} clipnodes supera MAX_MAP_CLIPNODES "
+            f"({MAX_MAP_CLIPNODES}) del motor; hay que reducir brushes."
+        )
     lump_clipnodes = b"".join(struct.pack("<ihh", cn[0], cn[1], cn[2]) for cn in clipnodes)
     lump_leafs = b"".join(leafs)
     lump_marksurfaces = b"".join(struct.pack("<H", m) for m in marksurfaces)
@@ -1724,8 +2481,45 @@ def generate_tranzit_thumbnails():
     print(f"[OK] Generadas miniaturas {menu_path} y {lscreen_path}")
 
 
+def validate_textures(world_brushes, submodels):
+    """Comprueba que todas las texturas referenciadas existen en el WAD3."""
+    tex_blobs = load_wad3_textures_from_town()
+    missing: Dict[str, int] = {}
+    faces = ("+x", "-x", "+y", "-y", "+z", "-z")
+
+    def scan(b: BoxBrush):
+        for f in faces:
+            if f in b.skip_faces:
+                continue
+            t = b.get_tex(f)
+            if t not in tex_blobs:
+                missing[t] = missing.get(t, 0) + 1
+
+    for b in world_brushes:
+        scan(b)
+    for _cn, brushes, _kv in submodels:
+        for b in brushes:
+            scan(b)
+
+    if missing:
+        print("[AVISO] Texturas inexistentes (se sustituyen por conc_road_D2):")
+        for k in sorted(missing):
+            print(f"        - {k}  ({missing[k]} caras)")
+    else:
+        print(f"[OK] Texturas validadas: {len(tex_blobs)} disponibles, 0 inexistentes")
+    return len(tex_blobs)
+
+
 def main():
     world_brushes, submodels, point_entities, lights, waypoints = build_tranzit_world()
+
+    n_brushes = len(world_brushes) + sum(len(b) for _c, b, _k in submodels)
+    print(
+        f"[INFO] Geometria: {len(world_brushes)} brushes de mundo, "
+        f"{len(submodels)} submodelos, {n_brushes} brushes totales"
+    )
+    print(f"[INFO] Luces puntuales: {len(lights)}   Entidades: {len(point_entities)}")
+    validate_textures(world_brushes, submodels)
 
     map_path = os.path.join(MAPS_SRC_DIR, "tranzit.map")
     export_map_file(map_path, world_brushes, submodels, point_entities)

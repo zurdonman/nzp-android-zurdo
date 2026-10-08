@@ -36,3 +36,7 @@ gh_token.txt
 third_party/
 quest_log*.txt
 tasks.json
+
+# ==== Python ====
+__pycache__/
+*.pyc
