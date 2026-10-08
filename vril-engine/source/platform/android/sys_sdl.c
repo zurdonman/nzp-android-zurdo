@@ -14,6 +14,8 @@
 #include <pthread.h>
 #include <android/log.h>
 
+#include "sys_android_log.h"
+
 const char *NZPData_FindBasedir(void);
 
 /* Hilo lector de la pipe: reenvia cada linea escrita por stdout/stderr a
@@ -43,6 +45,10 @@ static void *NZP_LogcatThread(void *arg)
 				__android_log_print(
 					is_stderr ? ANDROID_LOG_ERROR : ANDROID_LOG_INFO,
 					tag, "%s", cursor);
+				/* Copia a Descargas/NZP_Logs: logcat no se puede leer
+				 * desde el propio dispositivo. */
+				NZPLog_Write(cursor, -1);
+				NZPLog_Write("\n", 1);
 				cursor = nl + 1;
 			}
 			pending = strlen(cursor);
@@ -56,6 +62,9 @@ static void *NZP_LogcatThread(void *arg)
 		__android_log_print(
 			is_stderr ? ANDROID_LOG_ERROR : ANDROID_LOG_INFO,
 			tag, "%s", buf);
+		NZPLog_Write(buf, -1);
+		NZPLog_Write("\n", 1);
+		NZPLog_Flush();
 	}
 	free(cfg);
 	return NULL;
@@ -145,7 +154,38 @@ void Sys_MakeCodeWriteable(unsigned long startaddr, unsigned long length) { (voi
 
 void Sys_PrintSystemInfo(void) { Con_Printf("Vril Engine SDL (%s)\n", SDL_GetPlatform()); }
 void Sys_Printf(char *fmt, ...) { va_list args; va_start(args, fmt); vfprintf(stdout, fmt, args); va_end(args); }
-void Sys_SystemError(char *error) { fprintf(stderr, "Vril Engine: %s\n", error); if (SDL_WasInit(SDL_INIT_VIDEO)) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Vril Engine", error, sdl_window); SDL_Quit(); exit(1); }
+void Sys_SystemError(char *error)
+{
+	char msgbuf[4096];
+	const char *logpath;
+
+	fprintf(stderr, "Vril Engine: %s\n", error);
+
+	/* Margen para que el hilo lector de la pipe vuelque al fichero las
+	 * ultimas lineas de consola (incluido el Con_Printf del propio
+	 * error) antes de cerrar el registro. */
+	usleep(200000);
+
+	/* Volcado del error al .txt de Descargas/NZP_Logs y cierre del log:
+	 * es la unica forma de que el usuario pueda leer (o compartir) el
+	 * fallo sin un ordenador y adb logcat. */
+	NZPLog_Error(error);
+	logpath = NZPLog_Path();
+
+	/* El recuadro indica ademas donde quedo el fichero de registro. */
+	if (logpath && logpath[0] != '\0') {
+		snprintf(msgbuf, sizeof(msgbuf),
+			"Vril Engine: %s\n\nRegistro guardado en:\n%s", error, logpath);
+	} else {
+		snprintf(msgbuf, sizeof(msgbuf), "Vril Engine: %s", error);
+	}
+
+	if (SDL_WasInit(SDL_INIT_VIDEO))
+		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Vril Engine", msgbuf, sdl_window);
+
+	SDL_Quit();
+	exit(1);
+}
 void Sys_Quit(void) { sdl_running = false; }
 double Sys_FloatTime(void) { static Uint64 start; Uint64 now = SDL_GetPerformanceCounter(); if (!start) start = now; return (double)(now - start) / SDL_GetPerformanceFrequency(); }
 char *Sys_ConsoleInput(void) { return NULL; }
@@ -1221,6 +1261,12 @@ int main(int argc, char **argv)
 	 * ruta absoluta real. NZPData_FindBasedir() decide entre el almacenamiento
 	 * externo (si el usuario ya volco los datos) y la extraccion de los assets
 	 * del APK a almacenamiento interno. Ver sys_android_data.c. */
+	/* Registro a fichero (Descargas/NZP_Logs) para poder leer los fallos
+	 * sin ordenador. Se abre DESPUES de montar los pipes (asi su propio
+	 * texto tambien se captura) y ANTES de resolver el basedir, para no
+	 * perder nada del arranque. */
+	NZPLog_Init();
+
 	android_basedir = NZPData_FindBasedir();
 	if (!android_basedir) {
 		fprintf(stderr, "NZ:P: no se encontraron los datos del juego\n");
@@ -1328,6 +1374,7 @@ int main(int argc, char **argv)
 #endif
 	free(parms.membase);
 	Startup_FreeArguments(&startup);
+	NZPLog_Close();
 	SDL_Quit();
 	return 0;
 }

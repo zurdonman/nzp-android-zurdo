@@ -186,13 +186,22 @@ jobs:
           set -eux
           TAG="${GITHUB_REF_NAME}"
           if [ -z "$TAG" ] || [ "$TAG" = "main" ]; then TAG="v2.3-alpha"; fi
-          gh release create "$TAG" out/*.apk \
-            --title "NZ:P Android 2.3 Alpha" \
-            --notes "APK generado automaticamente por GitHub Actions.
+          # Si la release ya existe (recompilacion del mismo tag) se sustituye
+          # el APK en lugar de fallar.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" out/*.apk --clobber
+          else
+            gh release create "$TAG" out/*.apk \
+              --title "NZ:P Android 2.3 Alpha" \
+              --notes "APK generado automaticamente por GitHub Actions.
 
           - Version: 2.3 Alpha (versionCode 23)
           - ABI: arm64-v8a
           - Mapas de Tranzit (Green Run) y Town incluidos en los assets
+          - El motor escribe un registro de cada sesion en
+            Descargas/NZP_Logs/nzp-log-AAAAMMDD-HHMMSS.txt
+            (imprescindible para diagnosticar los errores de Tranzit)
           - Build: debug (instalable tal cual; si ya tenias una version
             anterior firmada distinta, desinstalala antes)" \
-            --latest
+              --latest
+          fi
