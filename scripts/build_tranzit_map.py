@@ -446,11 +446,21 @@ def build_tranzit_world():
     add_buyable_door("door_depot", "z_depot_ext", 750, -1578, -1940, 0, -1554, -1780, 160, tex="doors")
 
     # Spawns de jugadores dentro de Bus Depot
-    add_ent("info_player_start", (-1950, -1880, 44), angles="0 0 0")
-    add_ent("info_player_1_spawn", (-1950, -1880, 44), angles="0 0 0")
-    add_ent("info_player_2_spawn", (-1950, -1980, 44), angles="0 15 0")
-    add_ent("info_player_3_spawn", (-2060, -1880, 44), angles="0 0 0")
-    add_ent("info_player_4_spawn", (-2060, -1980, 44), angles="0 20 0")
+    #
+    # ALTURA DEL SUELO MEDIDA EN EL BSP COMPilado: la loseta del Bus Depot
+    # tiene la cara superior en Z=2 y el techo de la nave esta en Z=208, asi
+    # que el hueco libre va de Z=2 a Z=208. El jugador mide 72u (mins -32,
+    # maxs +40) y apoya con el ORIGEN en Z=34 (suelo + 32).
+    #
+    # Se coloca el spawn en Z=96, muy por encima del suelo (Z=2) y con 112u
+    # libres hasta el techo: asi el jugador nace SIEMPRE dentro del volumen
+    # jugable y, si el droptofloor del motor falla, aun asi cae de pie sobre
+    # el suelo en vez de aparecer por debajo de la loseta.
+    add_ent("info_player_start", (-1950, -1880, 96), angles="0 0 0")
+    add_ent("info_player_1_spawn", (-1950, -1880, 96), angles="0 0 0")
+    add_ent("info_player_2_spawn", (-1950, -1980, 96), angles="0 15 0")
+    add_ent("info_player_3_spawn", (-2060, -1880, 96), angles="0 0 0")
+    add_ent("info_player_4_spawn", (-2060, -1980, 96), angles="0 20 0")
 
     # Quick Revive en Bus Depot
     add_ent(

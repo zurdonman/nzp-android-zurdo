@@ -8765,27 +8765,27 @@
 }
 {
 "classname" "info_player_start"
-"origin" "-1950 -1880 44"
+"origin" "-1950 -1880 96"
 "angles" "0 0 0"
 }
 {
 "classname" "info_player_1_spawn"
-"origin" "-1950 -1880 44"
+"origin" "-1950 -1880 96"
 "angles" "0 0 0"
 }
 {
 "classname" "info_player_2_spawn"
-"origin" "-1950 -1980 44"
+"origin" "-1950 -1980 96"
 "angles" "0 15 0"
 }
 {
 "classname" "info_player_3_spawn"
-"origin" "-2060 -1880 44"
+"origin" "-2060 -1880 96"
 "angles" "0 0 0"
 }
 {
 "classname" "info_player_4_spawn"
-"origin" "-2060 -1980 44"
+"origin" "-2060 -1980 96"
 "angles" "0 20 0"
 }
 {
