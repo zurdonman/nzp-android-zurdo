@@ -1,20 +1,26 @@
 # ============================================================================
-#  build-apk.yml -- Compila el motor nativo (ndk-build) y genera el APK.
+#  build-apk.yml -- Compila el motor nativo (ndk-build) y genera los APK.
 #
-#  Es el equivalente en la nube de BUILD_APK.bat, para poder publicar un APK
-#  sin tener el Android SDK instalado en local.
+#  Es el equivalente en la nube de BUILD_APK.bat, para poder publicar APKs sin
+#  tener el Android SDK instalado en local.
 #
 #  Se ejecuta:
-#     - al publicar un tag  v*   (y crea la Release adjuntando el APK)
-#     - a mano con workflow_dispatch (solo sube el artefacto)
+#     - al publicar un tag  v*   (y crea la Release adjuntando los APK)
+#     - a mano con workflow_dispatch (solo sube los artefactos)
 #
-#  Salida:
-#     NZP-Android-<version>-arm64.apk   (debug, arm64-v8a, instalable)
+#  Salida (dos variantes sobre el mismo codigo):
+#     NZP-Android-<version>-arm64.apk         telefono Android (2D, minSdk 21)
+#     NZP-Android-<version>-quest3-arm64.apk  Meta Quest 3 (OpenXR, minSdk 29)
 #
-#  NOTA SOBRE VR: third_party/ esta en .gitignore, asi que en CI el SDK de
-#  OpenXR no esta disponible. jni/Android.mk lo detecta y compila SIN VR
-#  (todo el codigo VR esta bajo #ifdef NZP_VR_OPENXR). En local, con
-#  third_party/OpenXR-SDK presente, se compila con VR exactamente igual.
+#  NOTA SOBRE VR: third_party/ esta en .gitignore, asi que en un clon limpio
+#  el SDK de OpenXR no esta disponible. Todo el codigo VR (vr/vr_openxr.c y
+#  sus usos) esta bajo #ifdef NZP_VR_OPENXR, asi que sin SDK el motor compila
+#  identico pero en modo 2D. La variante quest3 descarga OpenXR-SDK
+#  (version abajo) y compila el loader con CMake+NDK antes de ndk-build, con
+#  lo que jni/Android.mk activa NZP_VR_OPENXR el solo.
+#
+#  En local (Windows) el comportamiento no cambia: si tienes
+#  third_party/OpenXR-SDK se compila con VR exactamente igual que siempre.
 # ============================================================================
 
 name: Build APK
@@ -26,7 +32,7 @@ on:
   workflow_dispatch:
     inputs:
       create_release:
-        description: 'Publicar una GitHub Release con el APK'
+        description: 'Publicar una GitHub Release con los APK'
         type: boolean
         required: false
         default: false
@@ -36,12 +42,25 @@ permissions:
 
 env:
   NDK_VERSION: 28.2.13676358
-  APK_BASENAME: NZP-Android-2.3.7
+  APK_BASENAME: NZP-Android-2.3.8
+  # Version del SDK de Khronos OpenXR (la misma que hay en local, ver
+  # ROADMAP_ANDROID_VR.md). No tiene submódulos: jsoncpp va en src/external.
+  OPENXR_VERSION: 1.1.63
 
 jobs:
   build:
-    name: ndk-build + assembleDebug
+    name: ${{ matrix.variant == 'quest3' && 'Quest 3 / OpenXR' || 'Telefono / 2D' }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [phone, quest3]
+
+    env:
+      VARIANT: ${{ matrix.variant }}
+      APK_SUFFIX: ${{ matrix.variant == 'quest3' && '-quest3' || '' }}
+      # Meta exige minSdk 29 para Quest; el telefono se queda en 21.
+      MIN_SDK: ${{ matrix.variant == 'quest3' && '29' || '21' }}
 
     steps:
       - name: Checkout
@@ -74,6 +93,39 @@ jobs:
           sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;${NDK_VERSION}"
           sdkmanager --list_installed | grep -i ndk
 
+      # ---------------------------------------------------------------------
+      # OpenXR: solo la variante Quest. Descarga el SDK de Khronos (sin
+      # submódulos, así que vale el tarball) y compila libopenxr_loader.so con
+      # el toolchain del NDK. jni/Android.mk lo detecta por la ruta
+      # third_party/OpenXR-SDK/build-android/src/loader/libopenxr_loader.so.
+      # ---------------------------------------------------------------------
+      - name: Descargar y compilar el loader de OpenXR (Quest)
+        if: matrix.variant == 'quest3'
+        run: |
+          set -eux
+          cmake --version | head -1
+          mkdir -p third_party
+          curl -L --fail --retry 3 -o /tmp/openxr-sdk.tar.gz \
+            "https://codeload.github.com/KhronosGroup/OpenXR-SDK/tar.gz/refs/tags/release-${OPENXR_VERSION}"
+          mkdir -p third_party/OpenXR-SDK
+          tar -xzf /tmp/openxr-sdk.tar.gz -C third_party/OpenXR-SDK --strip-components=1
+          rm -f /tmp/openxr-sdk.tar.gz
+          cmake -S third_party/OpenXR-SDK -B third_party/OpenXR-SDK/build-android \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_HOME/ndk/${NDK_VERSION}/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-29 \
+            -DANDROID_STL=c++_static \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_LOADER=ON \
+            -DBUILD_ALL_EXTENSIONS=ON \
+            -DBUILD_API_LAYERS=OFF \
+            -DBUILD_TESTS=OFF \
+            -DBUILD_CONFORMANCE_TESTS=OFF
+          cmake --build third_party/OpenXR-SDK/build-android --target openxr_loader -j"$(nproc)"
+          # El motor solo necesita el loader y los headers publicos.
+          ls -l third_party/OpenXR-SDK/build-android/src/loader/libopenxr_loader.so
+          ls third_party/OpenXR-SDK/include/openxr/
+
       # system.c incluye "_build_info.h", que en local generan los scripts de
       # PowerShell (build_engine_android.ps1). vril-engine/build/ esta en
       # .gitignore, asi que en CI hay que crearlo antes de ndk-build.
@@ -81,7 +133,7 @@ jobs:
         run: |
           set -ux
           # OJO: android-app/.../base/nzp/progs.dat es un ARTEFACTO GENERADO.
-          # Si no se recompila aqui, cualquier cambio en quakec/source/** llega
+          # Si no se recompila aqui, cualquier cambio en quake/source/** llega
           # al APK solo si alguien reconstruye y commitea el .dat a mano.
           # Todo el detalle se vuelca a /tmp/ci-logs/quakec.txt, que el paso
           # de diagnostico publica en la rama ci-logs si el build falla.
@@ -139,12 +191,33 @@ jobs:
             -j"$(nproc)" 2>&1 | tee /tmp/ci-logs/ndk-build.txt
           exit "${PIPESTATUS[0]}"
 
+      - name: Comprobar que la variante lleva lo que tiene que llevar
+        run: |
+          set -eux
+          LIBS="vril-engine/source/platform/android/libs/arm64-v8a"
+          ls -l "$LIBS"
+          echo "== aviso de VR de Android.mk =="
+          grep -i "OpenXR" /tmp/ci-logs/ndk-build.txt 2>/dev/null || echo "(sin avisos)"
+          if [ "$VARIANT" = "quest3" ]; then
+            # Sin el loader la app de Quest arranca pero no hay sesion XR.
+            test -f "$LIBS/libopenxr_loader.so"
+            # Y libmain.so debe quedar enlazada contra el (DT_NEEDED).
+            strings "$LIBS/libmain.so" | grep -q "libopenxr_loader.so"
+            echo "OK: libmain.so depende de libopenxr_loader.so"
+          else
+            echo "variante telefono: no debe llevar libopenxr_loader.so"
+            ! test -f "$LIBS/libopenxr_loader.so"
+          fi
+
       - name: Copiar librerias nativas al proyecto Android
         run: |
           set -eux
           mkdir -p android-app/app/libs/arm64-v8a
           cp vril-engine/source/platform/android/libs/arm64-v8a/libmain.so android-app/app/libs/arm64-v8a/
           cp vril-engine/source/platform/android/libs/arm64-v8a/libSDL2.so android-app/app/libs/arm64-v8a/
+          if [ "$VARIANT" = "quest3" ]; then
+            cp vril-engine/source/platform/android/libs/arm64-v8a/libopenxr_loader.so android-app/app/libs/arm64-v8a/
+          fi
           ls -l android-app/app/libs/arm64-v8a/
 
       - name: Generar local.properties del runner
@@ -160,7 +233,7 @@ jobs:
         run: |
           set -eux
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleDebug -PnzpMinSdk="$MIN_SDK" --no-daemon --stacktrace
           ls -l app/build/outputs/apk/debug/
 
       # Diagnostico: el sandbox de desarrollo no puede descargar los logs de
@@ -179,8 +252,8 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git fetch --depth=1 origin ci-logs || true
           git checkout -B ci-logs || true
-          rm -rf logs
-          D="logs/run-$GITHUB_RUN_ID"
+          rm -rf "logs/run-$GITHUB_RUN_ID-$VARIANT"
+          D="logs/run-$GITHUB_RUN_ID-$VARIANT"
           mkdir -p "$D"
           # OJO: .gitignore ignora *.log, por eso el volcado usa .txt y se
           # fuerza el add (-f) para que nunca se pierda el diagnostico.
@@ -188,6 +261,8 @@ jobs:
             echo "== entorno =="
             echo "ANDROID_HOME=$ANDROID_HOME"
             echo "NDK_VERSION=$NDK_VERSION"
+            echo "VARIANTE=$VARIANT"
+            echo "MIN_SDK=$MIN_SDK"
             echo
             echo "== \$ANDROID_HOME/ndk =="
             ls -la "$ANDROID_HOME/ndk/" 2>&1 || true
@@ -200,48 +275,72 @@ jobs:
           cat /tmp/ci-logs/quakec.txt > "$D/quakec.txt" 2>/dev/null \
             || echo "(el paso de QuakeC no dejo log)" > "$D/quakec.txt"
           git add -A -f logs
-          git commit -m "logs del run $GITHUB_RUN_ID (fallido)" || true
+          git commit -m "logs del run $GITHUB_RUN_ID ($VARIANT, fallido)" || true
           git push origin HEAD:ci-logs --force
 
       - name: Empaquetar APK con nombre de version
         run: |
           set -eux
           mkdir -p out
-          cp android-app/app/build/outputs/apk/debug/app-debug.apk "out/${APK_BASENAME}-arm64.apk"
+          cp android-app/app/build/outputs/apk/debug/app-debug.apk "out/${APK_BASENAME}${APK_SUFFIX}-arm64.apk"
           ls -l out/
 
       - name: Subir artefacto
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.APK_BASENAME }}
+          name: ${{ env.APK_BASENAME }}${{ env.APK_SUFFIX }}-arm64
           path: out/*.apk
           if-no-files-found: error
 
-      - name: Publicar GitHub Release con el APK
-        if: startsWith(github.ref, 'refs/tags/v') || inputs.create_release
+  # ---------------------------------------------------------------------------
+  # Release: junta los dos APK (telefono + Quest) y los publica en el tag.
+  # ---------------------------------------------------------------------------
+  release:
+    name: Publicar Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.create_release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar los APK de las dos variantes
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ${{ env.APK_BASENAME }}*-arm64
+          path: out/
+          merge-multiple: true
+
+      - name: Listar APK recogidos
+        run: ls -l out/
+
+      - name: Publicar GitHub Release con los APK
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_FALLBACK: v2.3.8
         run: |
           set -eux
           TAG="${GITHUB_REF_NAME}"
-          if [ -z "$TAG" ] || [ "$TAG" = "main" ]; then TAG="v2.3.7"; fi
-          # Si la release ya existe (recompilacion del mismo tag) se sustituye
-          # el APK en lugar de fallar.
+          if [ -z "$TAG" ] || [ "$TAG" = "main" ]; then TAG="$TAG_FALLBACK"; fi
+          # Si la release ya existe (recompilacion del mismo tag) se sustituyen
+          # los APK en lugar de fallar.
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" out/*.apk --clobber
           else
             gh release create "$TAG" out/*.apk \
-              --title "NZ:P Android 2.3.7" \
-              --notes "APK generado automaticamente por GitHub Actions.
+              --title "NZ:P Android 2.3.8" \
+              --notes "APK generados automaticamente por GitHub Actions.
 
-          - Version: 2.3.7 (versionCode 237)
+          - Version: 2.3.8 (versionCode 238)
           - ABI: arm64-v8a
+          - Dos APK:
+              * NZP-Android-2.3.8-arm64.apk         -> telefono Android (2D, minSdk 21)
+              * NZP-Android-2.3.8-quest3-arm64.apk  -> Meta Quest 3 (OpenXR, minSdk 29)
+          - VR (Quest): sesion OpenXR real; si el dispositivo no tiene runtime
+            OpenXR el juego sigue arrancando en 2D sin mas.
           - Mapas de Tranzit (Green Run) y Town incluidos en los assets
-          - Tranzit: mapa ampliado x5.8 en superficie (290 x 290 m,
-            ~83.800 m2) y niebla abierta de 36 m a 97 m de visibilidad
-          - Tranzit: segundas plantas transitables (pajar del granero
-            y azotea del Diner) con nodos de IA para que los zombies
-            tambien suban
+          - Tranzit: mapa ampliado x5.8 en superficie (290 x 290 m, ~83.800 m2)
+            y niebla abierta de 36 m a 97 m de visibilidad
+          - Tranzit: segundas plantas transitables (pajar del granero y azotea
+            del Diner) con nodos de IA para que los zombies tambien suban
           - El motor escribe un registro de cada sesion en
             Descargas/NZP_Logs/nzp-log-AAAAMMDD-HHMMSS.txt
             (imprescindible para diagnosticar los errores de Tranzit)

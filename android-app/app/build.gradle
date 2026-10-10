@@ -1,5 +1,8 @@
 def buildAsLibrary = project.hasProperty('BUILD_AS_LIBRARY');
 def buildAsApplication = !buildAsLibrary
+// El APK de Meta Quest 3 exige minSdk 29 (Meta no admite menos). ElAPK de
+// telefono sigue en 21. Lo decide el workflow con -PnzpMinSdk=<n>.
+def nzpMinSdk = (project.findProperty('nzpMinSdk') ?: '21').toString()
 if (buildAsApplication) {
     apply plugin: 'com.android.application'
 }
@@ -15,10 +18,10 @@ android {
     ndkVersion "28.2.13676358"
     defaultConfig {
         applicationId "com.nzpteam.nzportable"
-        minSdkVersion 21
+        minSdkVersion Integer.parseInt(nzpMinSdk)
         targetSdkVersion 34
-        versionCode 237
-        versionName "2.3.7"
+        versionCode 238
+        versionName "2.3.8"
     }
     buildTypes {
         debug {
