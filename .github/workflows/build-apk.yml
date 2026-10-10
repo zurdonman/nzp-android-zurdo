@@ -315,6 +315,9 @@ jobs:
       - name: Publicar GitHub Release con los APK
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Sin checkout en este job, `gh` no puede deducir el repositorio del
+          # remoto de git y falla con "could not determine current repository".
+          GH_REPO: ${{ github.repository }}
           TAG_FALLBACK: v2.3.8
         run: |
           set -eux
