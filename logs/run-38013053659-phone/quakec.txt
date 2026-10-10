@@ -1,0 +1,111 @@
++ echo '== entorno =='
+== entorno ==
++ uname -a
+Linux runnervmmprz5 6.17.0-1022-azure #22-Ubuntu SMP Mon Jul 27 17:24:03 UTC 2026 x86_64 x86_64 x86_64 GNU/Linux
++ python3 --version
+Python 3.12.3
++ echo
+
++ echo '== bin/ =='
+== bin/ ==
++ ls -l quakec/bin/
+total 1992
+-rwxr-xr-x 1 runner runner 760456 Oct 10 01:24 fteqcc-cli-lin
+-rw-r--r-- 1 runner runner 543456 Oct 10 01:24 fteqcc-cli-mac
+-rw-r--r-- 1 runner runner 702357 Oct 10 01:24 fteqcc-cli-win.exe
+-rw-r--r-- 1 runner runner  20136 Oct 10 01:24 fteqcc.ini
+-rw-r--r-- 1 runner runner   4316 Oct 10 01:24 qc_hash_generator.py
++ echo
+
++ echo '== tabla hash =='
+== tabla hash ==
++ python3 quakec/bin/qc_hash_generator.py -i quakec/tools/asset_conversion_table.csv -o quakec/source/server/hash_table.qc
++ echo 'hash exit=0'
+hash exit=0
++ echo
+
++ echo '== fteqcc =='
+== fteqcc ==
++ chmod +x quakec/bin/fteqcc-cli-lin
++ cd quakec
++ ./bin/fteqcc-cli-lin -O3 -Ono-compound_jumps -Wall -srcfile progs/ssqc.src
+FTEQCC: 6202 (2022-03-01T02:52:16.351120Z)
+Source file: progs/ssqc.src
+Outputfile: progs/../build/standard/progs.dat
+including progs/../source/server/defs/standard.qc
+including progs/../source/shared/shared_defs.qc
+including progs/../source/server/defs/custom.qc
+including progs/../source/server/useprints.qc
+including progs/../source/server/fte_builtins.qc
+including progs/../source/shared/json.qc
+including progs/../source/server/map_rotation.qc
+including progs/../source/server/utilities/sound_helper.qc
+including progs/../source/shared/weapon_stats.qc
+including progs/../source/server/utilities/math.qc
+including progs/../source/server/clientfuncs.qc
+including progs/../source/server/hash_table.qc
+including progs/../source/server/dummies.qc
+including progs/../source/server/rounds.qc
+including progs/../source/server/ai/zoning_core.qc
+including progs/../source/server/game_modifiers.qc
+including progs/../source/server/main.qc
+including progs/../source/server/plugins/plugin_mapvote.qc
+including progs/../source/server/plugins/plugin_core.qc
+including progs/../source/server/utilities/weapon_utilities.qc
+including progs/../source/server/utilities/command_parser.qc
+including progs/../source/server/player/player_core.qc
+including progs/../source/server/damage.qc
+including progs/../source/server/player/spawn_points.qc
+including progs/../source/server/player/last_stand.qc
+including progs/../source/server/entities/sub_functions.qc
+including progs/../source/server/entities/sounds.qc
+including progs/../source/server/entities/triggers.qc
+including progs/../source/server/entities/explosive_barrel.qc
+including progs/../source/server/entities/teleporter.qc
+including progs/../source/server/entities/map_entities.qc
+including progs/../source/server/entities/func.qc
+including progs/../source/server/entities/traps.qc
+including progs/../source/server/entities/lights.qc
+including progs/../source/server/entities/pack_a_punch.qc
+including progs/../source/server/entities/mystery_box.qc
+including progs/../source/server/entities/doors.qc
+including progs/../source/server/entities/window.qc
+including progs/../source/server/entities/power_switch.qc
+including progs/../source/server/entities/perk_a_cola.qc
+including progs/../source/server/entities/wall_weapon.qc
+including progs/../source/server/weapons/frames_core.qc
+including progs/../source/server/weapons/rocket_launcher.qc
+including progs/../source/server/weapons/ray_gun.qc
+including progs/../source/server/weapons/ray_gun_mk2.qc
+including progs/../source/server/weapons/ballistic_knife.qc
+including progs/../source/server/weapons/tesla.qc
+including progs/../source/server/weapons/flamethrower.qc
+including progs/../source/server/weapons/grenade_launcher.qc
+including progs/../source/server/weapons/bouncing_betty.qc
+including progs/../source/server/weapons/weapon_core.qc
+including progs/../source/server/entities/powerups.qc
+including progs/../source/server/ai/ai_core.qc
+including progs/../source/server/ai/standard/waypoints_func.qc
+including progs/../source/server/ai/standard/waypoints_core.qc
+including progs/../source/server/ai/zombie_core.qc
+including progs/../source/server/ai/crawler_core.qc
+including progs/../source/server/ai/dog_core.qc
+including progs/../source/server/entities/tranzit.qc
+including progs/../source/server/utilities/map_compatibility.qc
+including progs/../source/server/gamemodes/gun_game.qc
+including progs/../source/server/gamemodes/hardcore.qc
+including progs/../source/server/gamemodes/wild_west.qc
+including progs/../source/server/gamemodes/sticks_and_stones.qc
+including progs/../source/server/gamemodes/festive.qc
+including progs/../source/server/gamemodes/core.qc
+Compile finished: progs/../build/standard/progs.dat (id format)
+Done. 0 warnings
++ echo 'fteqcc exit=0'
+fteqcc exit=0
++ echo
+
++ echo '== salida =='
+== salida ==
++ ls -l quakec/build/standard/
+total 740
+-rw-r--r-- 1 runner runner 755754 Oct 10 01:24 progs.dat

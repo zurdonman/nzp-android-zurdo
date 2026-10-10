@@ -1,0 +1,28 @@
++ echo '== entorno =='
+== entorno ==
++ echo ANDROID_HOME=/usr/local/lib/android/sdk
+ANDROID_HOME=/usr/local/lib/android/sdk
++ echo NDK_VERSION=28.2.13676358
+NDK_VERSION=28.2.13676358
++ echo VARIANTE=phone
+VARIANTE=phone
++ echo MIN_SDK=21
+MIN_SDK=21
++ echo
+
++ echo '== $ANDROID_HOME/ndk =='
+== $ANDROID_HOME/ndk ==
++ ls -la /usr/local/lib/android/sdk/ndk/
+total 24
+drwxrwxrwx  6 root   root   4096 Oct 10 01:24 .
+drwxrwxrwx 11 root   root   4096 Oct  4 21:51 ..
+drwxrwxrwx 11 root   root   4096 Oct  4 21:51 27.3.13750724
+drwxr-xr-x 11 runner runner 4096 Oct 10 01:24 28.2.13676358
+drwxrwxrwx 11 root   root   4096 Oct  4 21:51 29.0.14206865
+drwxrwxrwx 10 root   root   4096 Oct  4 21:50 30.0.16248370
++ echo
+
++ echo '== ndk-build =='
+== ndk-build ==
++ ls -la /usr/local/lib/android/sdk/ndk/28.2.13676358/ndk-build
+-rwxr-xr-x 1 runner runner 73 Oct 10 01:24 /usr/local/lib/android/sdk/ndk/28.2.13676358/ndk-build
