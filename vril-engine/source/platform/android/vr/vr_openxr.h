@@ -81,7 +81,6 @@ extern cvar_t	vr_debug;
 extern cvar_t	vr_turn_speed;
 extern cvar_t	vr_fov_mult;
 extern cvar_t	vr_vm_scale;
-extern cvar_t	vr_vm_gain;
 extern cvar_t	vr_hud_scale;
 extern cvar_t	vr_camera_right;
 extern cvar_t	vr_hand_right;

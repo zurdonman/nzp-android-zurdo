@@ -1,150 +1,20 @@
-### 01_bus_depot_interior  cam=(-4818,-4582,56) yaw=15.0
-    cobertura=100.0%  cielo=0.0%  mdl3D=0.01%
-    texturas_visibles=9  profundidad p50=375 p95=1134
-    luminancia media=94.5 (min=12 max=242 std=51.3)  oscuro=0.6%  quemado=0.6%
-    top: ceilings_te1=25.4%, wood_t1=19.8%, w_wood_dark_64=19.5%, 3tiles_grey1=13.3%, wall_br_red=11.3%, bricks_ak_white=5.6%, br_lightGL=2.6%, doors=2.5%
-### 02_bus_depot_ext_bus  cam=(-3055,-4465,62) yaw=190.0
-    cobertura=98.2%  cielo=1.8%  mdl3D=2.49%
-    texturas_visibles=10  profundidad p50=331 p95=674
-    luminancia media=96.7 (min=4 max=217 std=48.8)  oscuro=7.6%  quemado=0.0%
-    top: sidewalk=28.1%, conS6C=15.4%, wall_br_red=11.8%, ground_dirt=10.3%, doors=9.3%, conc_road_D2=8.5%, window_lit=4.5%, metal_stB=3.1%
-### 03_depot_platform  cam=(-3337,-4371,58) yaw=180.0
+### spawn_00  cam=(-4582,-4418,96) yaw=0.0
     cobertura=100.0%  cielo=0.0%  mdl3D=0.00%
-    texturas_visibles=7  profundidad p50=286 p95=316
-    luminancia media=112.0 (min=4 max=217 std=53.2)  oscuro=3.1%  quemado=0.0%
-    top: sidewalk=28.7%, doors=27.1%, wall_br_red=20.1%, window_lit=10.0%, ground_dirt=9.0%, conS6C=4.4%, conc_road_D2=0.7%
-### 04_highway_tunnel  cam=(-4418,-1128,58) yaw=85.0
-    cobertura=100.0%  cielo=0.0%  mdl3D=0.65%
-    texturas_visibles=24  profundidad p50=479 p95=1985
-    luminancia media=107.9 (min=0 max=241 std=51.0)  oscuro=0.2%  quemado=0.9%
-    top: con_linesB=50.9%, asphalt_line=33.9%, br_lightGL=4.9%, conc_road_D2=3.0%, tunnel_tile=1.6%, corn_wall=1.2%, metal_grate=0.9%, con_rN=0.7%
-### 05_tunnel_portal_south  cam=(-4136,-2115,58) yaw=10.0
-    cobertura=82.3%  cielo=17.7%  mdl3D=0.00%
-    texturas_visibles=17  profundidad p50=386 p95=1592
-    luminancia media=67.0 (min=4 max=235 std=45.5)  oscuro=15.7%  quemado=0.0%
-    top: asphalt_line=27.1%, <sky/fondo>=17.7%, con_rN=15.0%, ground_dirt=14.7%, con_linesB=11.0%, sidewalk=7.2%, road_stripe=2.8%, metal_grate=1.2%
-### 06_diner_exterior_canopy  cam=(-3572,3102,62) yaw=42.0
-    cobertura=96.5%  cielo=3.5%  mdl3D=0.26%
-    texturas_visibles=25  profundidad p50=325 p95=1007
-    luminancia media=82.1 (min=18 max=206 std=45.7)  oscuro=0.7%  quemado=0.0%
-    top: road_stripe=38.4%, metal_stB=19.9%, ceilings_sign5=13.9%, wall_br_red=11.4%, sidewalk=6.7%, <sky/fondo>=3.5%, bricks_red2=2.5%, sign_diner=1.2%
-### 07_diner_interior  cam=(-3243,4277,58) yaw=35.0
-    cobertura=100.0%  cielo=0.0%  mdl3D=2.54%
-    texturas_visibles=11  profundidad p50=370 p95=1214
-    luminancia media=122.2 (min=3 max=241 std=68.5)  oscuro=0.3%  quemado=1.4%
-    top: diner_tile=41.5%, ceilings_te1=22.2%, w_wood_dark_64=10.1%, 3tiles_grey1=6.5%, br_lightGL=5.5%, bricks_red2=5.3%, sidewalk=2.6%, <mdl 3D>=2.5%
-### 08_garage_interior  cam=(-4465,4465,60) yaw=20.0
-    cobertura=100.0%  cielo=0.0%  mdl3D=0.00%
-    texturas_visibles=6  profundidad p50=359 p95=546
-    luminancia media=90.4 (min=0 max=241 std=38.9)  oscuro=8.5%  quemado=0.2%
-    top: metal_grate=41.3%, conS6C=24.7%, brick_pillar=17.8%, metal_stB=7.9%, metal_floor=7.8%, br_lightGL=0.5%
-### 09_cornfield_nacht  cam=(0,1645,58) yaw=90.0
-    cobertura=73.2%  cielo=26.8%  mdl3D=0.02%
-    texturas_visibles=9  profundidad p50=180 p95=1030
-    luminancia media=66.1 (min=1 max=240 std=36.8)  oscuro=4.4%  quemado=0.0%
-    top: debris=34.0%, corn_wall=33.9%, <sky/fondo>=26.8%, con_rN=2.8%, sidewalk=0.8%, m_metal_darkBlu=0.6%, fence_wood=0.4%, br_lightGL=0.4%
-### 10_nacht_bunker  cam=(0,-588,58) yaw=180.0
-    cobertura=100.0%  cielo=0.0%  mdl3D=0.01%
-    texturas_visibles=5  profundidad p50=302 p95=535
-    luminancia media=103.7 (min=1 max=190 std=34.0)  oscuro=1.6%  quemado=0.0%
-    top: con_rN=46.6%, debris=39.0%, w_wood_dark_64=7.0%, m_metal_darkBlu=4.9%, der_riese_windo=2.5%, <mdl 3D>=0.0%
-### 11_farm_yard  cam=(3666,3431,62) yaw=-18.0
-    cobertura=94.0%  cielo=6.0%  mdl3D=2.56%
-    texturas_visibles=7  profundidad p50=163 p95=1759
-    luminancia media=79.7 (min=1 max=180 std=26.8)  oscuro=1.9%  quemado=0.0%
-    top: fence_wood=33.9%, bricks_red2=18.1%, debris=17.7%, sidewalk=10.0%, con_rN=8.1%, <sky/fondo>=6.0%, wall_Owood=3.1%, <mdl 3D>=2.6%
-### 12_farm_barn  cam=(4230,2726,60) yaw=30.0
-    cobertura=100.0%  cielo=0.0%  mdl3D=0.39%
-    texturas_visibles=6  profundidad p50=456 p95=928
-    luminancia media=74.1 (min=1 max=241 std=36.7)  oscuro=2.5%  quemado=0.4%
-    top: debris=47.5%, bricks_red2=27.5%, w_wood_dark_64=22.0%, br_lightGL=1.6%, hay_wall=1.0%, <mdl 3D>=0.4%, wood_t1=0.0%
-### 13_farmhouse_porch  cam=(3760,4465,58) yaw=0.0
-    cobertura=100.0%  cielo=0.0%  mdl3D=0.35%
-    texturas_visibles=6  profundidad p50=164 p95=1428
-    luminancia media=73.5 (min=0 max=241 std=41.9)  oscuro=1.4%  quemado=0.2%
-    top: w_wood_dark_64=39.0%, wall_Owood=18.4%, shingle_roof=18.4%, w_wood_floor_YB=17.0%, window_lit=6.0%, br_lightGL=0.9%, <mdl 3D>=0.4%
-### 14_power_station  cam=(3901,-564,62) yaw=-48.0
-    cobertura=100.0%  cielo=0.0%  mdl3D=0.17%
-    texturas_visibles=10  profundidad p50=462 p95=1415
-    luminancia media=94.5 (min=0 max=242 std=44.8)  oscuro=0.9%  quemado=0.8%
-    top: metal_floor=53.7%, ceilings_te1=19.2%, facility_wall_l=9.1%, reactor_blue=4.6%, metal_stB=4.3%, metal_grate=4.1%, br_lightGL=3.7%, facility_contro=1.0%
-### 15_power_reactor  cam=(4183,-940,60) yaw=0.0
-    cobertura=100.0%  cielo=0.0%  mdl3D=0.00%
-    texturas_visibles=7  profundidad p50=343 p95=1050
-    luminancia media=88.3 (min=0 max=242 std=41.4)  oscuro=2.5%  quemado=0.3%
-    top: metal_floor=46.6%, ceilings_te1=17.7%, facility_wall_l=14.0%, metal_grate=12.3%, reactor_blue=6.4%, metal_stB=2.1%, br_lightGL=0.9%
-### 16_town_street  cam=(-893,-3854,62) yaw=8.0
-    cobertura=79.8%  cielo=20.2%  mdl3D=0.00%
-    texturas_visibles=21  profundidad p50=345 p95=1431
-    luminancia media=66.6 (min=10 max=254 std=47.4)  oscuro=2.5%  quemado=0.3%
-    top: road_stripe=48.6%, <sky/fondo>=20.2%, doors_dark=5.5%, bricks_ak_white=5.3%, wall_br_red=4.2%, brick_pillar=2.3%, ver_metal_door=2.2%, window_lit=2.0%
-### 17_town_bar  cam=(-376,-3102,58) yaw=180.0
-    cobertura=100.0%  cielo=0.0%  mdl3D=0.69%
-    texturas_visibles=10  profundidad p50=367 p95=834
-    luminancia media=59.6 (min=0 max=241 std=29.0)  oscuro=3.4%  quemado=0.2%
-    top: w_wood_dark_64=62.1%, bricks_r64=17.0%, wall_br_red=12.6%, w_wood_brown_re=4.3%, window_lit=1.7%, <mdl 3D>=0.7%, br_lightGL=0.6%, wood_t1=0.5%
-### 18_town_bank_vault  cam=(1010,-4888,58) yaw=180.0
-    cobertura=100.0%  cielo=0.0%  mdl3D=0.00%
-    texturas_visibles=7  profundidad p50=156 p95=562
-    luminancia media=84.3 (min=0 max=234 std=32.4)  oscuro=0.2%  quemado=0.0%
-    top: t_floor_blue=44.6%, metal_stB=33.5%, ceilings_te1=11.1%, ver_metal_door=5.9%, m_metal_stG=3.1%, metal_grate=1.0%, floor2_gr3x3=0.9%
-### 19_bus_stop_depot  cam=(-3337,-3055,62) yaw=95.0
-    cobertura=82.5%  cielo=17.5%  mdl3D=0.00%
-    texturas_visibles=19  profundidad p50=322 p95=2617
-    luminancia media=78.1 (min=2 max=231 std=51.6)  oscuro=3.5%  quemado=0.0%
-    top: road_stripe=51.4%, <sky/fondo>=17.5%, con_linesB=13.3%, con_rN=5.9%, sidewalk=2.7%, asphalt_line=2.6%, conc_road_D2=1.7%, metal_grate=0.9%
-### 20_bus_interior  cam=(-3454,-3901,34) yaw=5.0
-    cobertura=80.0%  cielo=20.0%  mdl3D=0.70%
-    texturas_visibles=23  profundidad p50=98 p95=2067
-    luminancia media=62.2 (min=11 max=241 std=40.8)  oscuro=2.4%  quemado=0.2%
-    top: road_stripe=21.2%, <sky/fondo>=20.0%, lava_cracks=15.5%, bus_side=13.5%, bus_metal=5.8%, con_rN=5.5%, carpet_64_red=4.4%, m_metal_darkBlu=2.9%
-### 21_cooling_towers  cam=(4183,1880,62) yaw=-90.0
-    cobertura=84.3%  cielo=15.7%  mdl3D=0.00%
-    texturas_visibles=11  profundidad p50=383 p95=1524
-    luminancia media=50.7 (min=4 max=154 std=36.5)  oscuro=24.5%  quemado=0.0%
-    top: ground_dirt=47.1%, cooling_tower=27.5%, <sky/fondo>=15.7%, w_wood_dark_64=2.1%, con_rN=2.1%, corn_wall=1.9%, facility_wall_l=1.7%, metal_stB=1.5%
-### 22_town_bank_lobby  cam=(-235,-4582,58) yaw=0.0
-    cobertura=100.0%  cielo=0.0%  mdl3D=0.00%
-    texturas_visibles=7  profundidad p50=354 p95=614
-    luminancia media=104.6 (min=25 max=242 std=36.1)  oscuro=0.0%  quemado=0.0%
-    top: floor2_gr3x3=44.4%, metal_stB=18.0%, bricks_ak_white=15.5%, ceilings_te1=11.5%, ver_metal_door=7.0%, m_metal_stG=3.4%, t_floor_blue=0.3%
-### 23_east_road_power  cam=(2115,141,62) yaw=0.0
-    cobertura=80.5%  cielo=19.5%  mdl3D=0.00%
-    texturas_visibles=17  profundidad p50=193 p95=2364
-    luminancia media=79.7 (min=11 max=206 std=43.3)  oscuro=2.6%  quemado=0.0%
-    top: sidewalk=31.6%, <sky/fondo>=19.5%, road_stripe=12.5%, sign_power=8.4%, m_metal_darkBlu=8.0%, facility_contro=4.8%, ground_dirt=3.2%, cooling_tower=3.1%
-### 24_highway_west  cam=(-2890,-1410,62) yaw=70.0
-    cobertura=100.0%  cielo=0.0%  mdl3D=0.00%
-    texturas_visibles=19  profundidad p50=244 p95=1662
-    luminancia media=107.2 (min=0 max=241 std=42.1)  oscuro=2.4%  quemado=0.4%
-    top: con_rN=24.6%, sidewalk=23.1%, asphalt_line=15.4%, con_linesB=15.1%, metal_grate=10.1%, m_metal_darkBlu=5.4%, br_lightGL=2.5%, corn_wall=1.2%
-### 25_cornfield_fence  cam=(-1222,-588,62) yaw=15.0
-    cobertura=88.7%  cielo=11.3%  mdl3D=0.00%
-    texturas_visibles=5  profundidad p50=275 p95=593
-    luminancia media=59.9 (min=6 max=196 std=39.1)  oscuro=19.4%  quemado=0.0%
-    top: ground_dirt=34.4%, corn_wall=21.0%, fence_wood=20.3%, <sky/fondo>=11.3%, con_rN=10.1%, w_wood_dark_64=3.0%
-### 26_north_wreck_yard  cam=(588,4042,62) yaw=180.0
-    cobertura=71.1%  cielo=28.9%  mdl3D=0.00%
-    texturas_visibles=16  profundidad p50=273 p95=2257
-    luminancia media=36.7 (min=3 max=221 std=22.4)  oscuro=24.7%  quemado=0.0%
-    top: ground_dirt=47.6%, <sky/fondo>=28.9%, fence_wood=4.4%, con_rN=4.2%, corn_wall=3.1%, m_metal_darkBlu=2.6%, metal_grate=2.4%, w_wood_dark_64=2.0%
-### 27_highway_north  cam=(-2350,2867,62) yaw=0.0
-    cobertura=79.1%  cielo=20.9%  mdl3D=0.64%
-    texturas_visibles=20  profundidad p50=253 p95=2523
-    luminancia media=63.4 (min=12 max=221 std=40.6)  oscuro=1.9%  quemado=0.0%
-    top: road_stripe=42.6%, corn_wall=27.1%, <sky/fondo>=20.9%, con_rN=2.5%, fence_wood=1.9%, sidewalk=0.9%, lava_cracks=0.9%, <mdl 3D>=0.6%
-### 28_barn_hay_loft  cam=(5069,2973,176) yaw=200.0
-    cobertura=100.0%  cielo=0.0%  mdl3D=0.00%
-    texturas_visibles=13  profundidad p50=175 p95=1226
-    luminancia media=66.1 (min=3 max=241 std=26.6)  oscuro=0.8%  quemado=0.4%
-    top: wood_t1=55.7%, w_wood_dark_64=23.8%, bricks_red2=14.3%, br_lightGL=1.6%, fence_wood=1.3%, wall_Owood3=1.2%, hay_wall=0.9%, debris=0.5%
-### 29_diner_rooftop  cam=(-1998,4700,268) yaw=190.0
-    cobertura=74.1%  cielo=25.9%  mdl3D=0.00%
-    texturas_visibles=7  profundidad p50=135 p95=2062
-    luminancia media=73.7 (min=21 max=241 std=33.0)  oscuro=2.9%  quemado=0.1%
-    top: roof_green=61.0%, <sky/fondo>=25.9%, con_rN=5.5%, metal_stB=4.4%, bricks_red2=1.8%, sign_diner=0.5%, m_metal_darkBlu=0.4%, br_lightGL=0.3%
-### 30_diner_fire_escape  cam=(-1551,4465,150) yaw=330.0
-    cobertura=100.0%  cielo=0.0%  mdl3D=0.00%
-    texturas_visibles=4  profundidad p50=71 p95=99
-    luminancia media=73.1 (min=0 max=137 std=33.2)  oscuro=10.4%  quemado=0.0%
-    top: metal_grate=53.1%, metal_stB=44.0%, w_wood_dark_64=2.5%, fence_wood=0.4%
+    texturas_visibles=8  profundidad p50=421 p95=869
+    luminancia media=98.6 (min=14 max=242 std=54.3)  oscuro=0.4%  quemado=1.4%
+    top: 3tiles_grey1=45.6%, ceilings_te1=24.8%, wall_br_red=17.6%, br_lightGL=4.6%, doors=4.5%, bricks_ak_white=2.1%, sidewalk=0.5%, conS6C=0.3%
+### spawn_90  cam=(-4582,-4418,96) yaw=90.0
+    cobertura=100.0%  cielo=0.0%  mdl3D=0.03%
+    texturas_visibles=9  profundidad p50=381 p95=700
+    luminancia media=102.4 (min=12 max=254 std=52.1)  oscuro=0.5%  quemado=1.2%
+    top: 3tiles_grey1=36.5%, ceilings_te1=23.1%, bricks_ak_white=16.0%, g_glass_=11.3%, w_wood_dark_64=8.0%, br_lightGL=3.4%, wood_t1=1.3%, sign_depot=0.4%
+### spawn_180  cam=(-4582,-4418,96) yaw=180.0
+    cobertura=100.0%  cielo=0.0%  mdl3D=1.13%
+    texturas_visibles=8  profundidad p50=401 p95=634
+    luminancia media=105.8 (min=12 max=242 std=51.1)  oscuro=0.5%  quemado=0.7%
+    top: 3tiles_grey1=31.0%, bricks_ak_white=26.1%, ceilings_te1=22.8%, w_wood_dark_64=12.2%, window_lit=2.7%, con_rN=2.1%, br_lightGL=1.9%, <mdl 3D>=1.1%
+### spawn_270  cam=(-4582,-4418,96) yaw=270.0
+    cobertura=100.0%  cielo=0.0%  mdl3D=0.58%
+    texturas_visibles=8  profundidad p50=368 p95=680
+    luminancia media=105.9 (min=12 max=242 std=53.0)  oscuro=0.5%  quemado=0.7%
+    top: bricks_ak_white=25.5%, 3tiles_grey1=24.0%, ceilings_te1=23.1%, w_wood_dark_64=19.6%, window_lit=2.7%, br_lightGL=2.6%, con_rN=1.8%, <mdl 3D>=0.6%

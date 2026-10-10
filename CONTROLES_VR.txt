@@ -38,7 +38,6 @@ MENU (con el puntero laser)
 ==========================================================
  AJUSTES (menu CONFIGURATION -> CONTROLS -> VR OPTIONS)
 ==========================================================
-  vr_vm_gain 5.0   .. Holgura del arma: el arma se mueve 5x
   vr_camera_right 0.75 .. Cámara de primera persona un poco a la derecha.
   vr_hud_scale 0.82 .. HUD algo más pequeño y aparentemente más lejano.
   vr_hand_right -0.75 .. Mueve manos/arma a la izquierda o derecha.
@@ -64,8 +63,8 @@ MENU (con el puntero laser)
   - Caminar ya funciona igual apuntes el arma arriba o abajo
     (antes, con el arma mirando al suelo la direccion se
     volvian loca; el angulo del arma saltaba 180 grados).
-  - El arma tiene mas recorrido: si llevas el mando a la cara,
-    el arma sube con las gafas y ademas se desplaza mas de lo
-    que mueves la mano (vr_vm_gain).
+  - El arma va RIGIDA 1:1 con el mando: se queda exactamente
+    donde dejas la mano, sin holgura ni efecto muelle (se ha
+    eliminado el antiguo vr_vm_gain).
   - Nuevos botones: pulsar stick izquierdo = agacharse,
     pulsar stick derecho = esprintar.

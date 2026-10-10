@@ -30,7 +30,7 @@
 ## Cvars de ajuste
 
 - `vr_vm_scale`: tamano del modelo del arma.
-- `vr_vm_gain`: amplificacion del desplazamiento del mando.
+- El arma va rigida 1:1 con el mando (sin holgura ni resorte).
 - `vr_camera_right`: offset lateral de la camara de primera persona.
 - `vr_hand_right`, `vr_hand_up`, `vr_hand_forward`: offset local del arma.
 - `vr_hand_yaw`, `vr_hand_pitch`: giro adicional del arma.
