@@ -5,7 +5,12 @@
     android:versionName="2.3.8"
     android:installLocation="auto">
 
-    <uses-feature android:glEsVersion="0x00020000" android:required="true" />
+    <!-- VR (Quest): el runtime Meta lee glEsVersion del manifest para habilitar
+         las extensiones de importacion de memoria (EGL dma_buf / external
+         memory). Con 0x00020000 las DESACTIVA y logcat da "ImportTextureResourcesGLES:
+         external memory object extensions are not found" -> swapchain -2 / capa -23.
+         hello_xr declara 0x00030000. Quest 3 soporta ES 3.2. -->
+    <uses-feature android:glEsVersion="0x00030000" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />

@@ -1,8 +1,8 @@
 # 🗺️ Hoja de Ruta: Nazi Zombies: Portable → Android + VR
 
-**Fecha:** 2026-10-06 (actualizado)
+**Fecha:** 2026-10-06 (v12)
 **Proyecto:** NZ:P Team — *Vril Engine* (fork mejorado del motor Quake)
-**Estado actual:** ✅ Motor compilado y **JUGABLE en Windows** (`PLAY.bat`) · ✅ **Port Android JUGABLE con controles táctiles** (APK `com.nzpteam.nzportable` en móvil y Quest 3) · 🔶 **VR (OpenXR en Quest 3) en fase final**: sesión FOCUSED + acciones de mandos + head tracking verificados en casco; fix raíz del crash `xrEndFrame` (swapchains post-begin) desplegado, pendiente de validación visual estéreo (swapchains/FBOs 1680x1760 por ojo)
+**Estado actual:** ✅ Motor compilado y **JUGABLE en Windows** (`PLAY.bat`) · ✅ **Port Android JUGABLE con controles táctiles** (APK `com.nzpteam.nzportable` en móvil y Quest 3) · 🥽 **VR (OpenXR en Quest 3): -23 RESUELTO**. Causa raíz real = las imágenes del swapchain se liberaban DESPUÉS de `xrEndFrame`; la spec/hello_xr exigen estado READY (release ANTES de EndFrame). Con el fix, la sesión llega a FOCUSED(5) y renderiza capa de proyección estereo **sin ningún -23** (0 errores en 6655 líneas de log). Añadido limitador `vr_fps` (72 Hz) para eliminar el negro intercalado. Pendiente: validación visual con el usuario (¿se ve 3D al girar la cabeza?).
 
 ---
 
@@ -14,7 +14,7 @@
 | ¿Cuál es la mejor base para VR? | Confirmada: SDL2 + **OpenXR nativo in-process** (`vr_openxr.c`), GLES 1.1 + FBOs OES por ojo, swapchains ES3 compartido. `injector.cpp` (opción B) descartado: no sirve en Quest. |
 | ¿Se compila hoy en esta máquina? | **Sí.** PC: `BUILD.bat`. Android: `scripts\build_engine_android.ps1` + `scripts\build_apk.ps1` (NDK 28.2, JDK 17). |
 | ¿Dónde están los datos jugables? | `game\nzp\` (1152 archivos / 105 MB del nightly) empaquetados en `android-app/app/src/main/assets/base/nzp/` y extraídos al almacenamiento interno en el primer arranque. |
-| ¿VR funcionando en Quest 3? | **A un paso.** Verificado en casco: sesión hasta FOCUSED(5), swapchains+FBOs 1680x1760 por ojo, poses de cabeza vivas, "Acciones de mandos listas". Bloqueador histórico (SIGSEGV en `xrEndFrame` con capas) diagnosticado con evidencia forense: los swapchains deben crearse DESPUÉS de `xrBeginSession` (el compositor de Meta no registra imágenes creadas pre-begin). Fix desplegado (commit `0406088`), falta validación visual con casco. |
+| ¿VR funcionando en Quest 3? | **SÍ en el pipeline (falta confirmación visual del usuario).** Verificado en casco: sesión FOCUSED(5) estable, capa de proyección estereo aceptada por el compositor **sin -23** (0 errores). Swapchains+FBOs 1680x1760 por ojo, poses de cabeza vivas, "Acciones de mandos listas". **Causa raíz real del -23 (resuelta):** la imagen del swapchain debe estar en estado READY (liberada) ANTES de `xrEndFrame`; nosotros la liberábamos después. La teoría previa de "swapchains post-begin" era falsa (el SIGSEGV era `fei.layers`, ya corregido). |
 
 ---
 

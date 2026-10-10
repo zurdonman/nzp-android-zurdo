@@ -1,0 +1,71 @@
+==========================================================
+ CONTROLES VR - NAZI ZOMBIES PORTABLE (Quest 3)
+==========================================================
+
+MANO DERECHA
+  Gatillo (indice) ........ Disparar
+  Agarre (puño lateral) ... Recargar
+  Boton A ................. Saltar
+  Boton B ................. Cambiar de arma
+  Stick derecho (mover) ... Girar la vista (izquierda/derecha)
+  Stick derecho (PULSAR) .. Agacharse / levantarse
+
+MANO IZQUIERDA
+  Gatillo (indice) ........ Apuntar / mira (AIM)
+  Agarre (puño lateral) ... Usar / abrir puertas / comprar
+  Boton X ................. Lanzar granada
+  Boton Y ................. Cuchillazo
+  Stick izquierdo (mover) . Caminar (te mueves hacia donde
+                            miran las gafas, no el arma)
+  Stick izquierdo (PULSAR). Esprintar (mientras lo mantengas)
+  Boton Menu (lateral) .... Menu de pausa
+
+GESTO ESPECIAL
+  Los 4 gatillos a la vez (2 indices + 2 agarres)
+  mantenidos 1 segundo .... Abrir/cerrar menu de opciones
+
+COMBINACIONES PARA ACCIONES EXTRA
+  Pulsar L3 + R3 .......... Tirarse al suelo / ponerse de pie (prone)
+  X + B ................... Cambiar tipo de granada
+  Gatillo izq + grip izq .. Alternar apuntado mantener/activar
+  X + Y ................... Preparar Bouncing Betty
+
+MENU (con el puntero laser)
+  Apuntar con el mando ... Mueve el cursor (como un raton)
+  Cualquier gatillo ...... Clic sobre el boton apuntado
+  Stick derecho .......... Navegar con las flechas
+
+==========================================================
+ AJUSTES (menu CONFIGURATION -> CONTROLS -> VR OPTIONS)
+==========================================================
+  vr_vm_gain 5.0   .. Holgura del arma: el arma se mueve 5x
+  vr_camera_right 0.75 .. Cámara de primera persona un poco a la derecha.
+  vr_hud_scale 0.82 .. HUD algo más pequeño y aparentemente más lejano.
+  vr_hand_right -0.75 .. Mueve manos/arma a la izquierda o derecha.
+  vr_hand_up 0 ........ Mueve manos/arma arriba o abajo.
+  vr_hand_forward 0 .. Mueve manos/arma cerca o lejos.
+  vr_hand_yaw 0 ...... Gira manos/arma horizontalmente.
+  vr_hand_pitch 0 .... Gira manos/arma verticalmente.
+  vr_laser_muzzle 40 . Distancia del laser desde el modelo hacia la boca.
+                      mas que tu mano (subir = mas recorrido,
+                      bajar = mas pegada a la mano). 1 = rigida.
+  vr_vm_scale 0.65 .. Tamaño del arma en las manos.
+  vr_turn_speed 180 . Velocidad de giro con el stick derecho.
+  vr_world_scale 18 . Tamano percibido del mundo (distancia).
+  vr_menu_distance 3 . Distancia a la que ves el menu de opciones.
+
+  Los seis ajustes anteriores tambien aparecen como sliders dentro de
+  VR OPTIONS. El menu VR usa ahora un lienzo mas ancho (2:1) para separar
+  mejor los nombres, valores y barras.
+
+==========================================================
+ NOVEDADES DE ESTA VERSION
+==========================================================
+  - Caminar ya funciona igual apuntes el arma arriba o abajo
+    (antes, con el arma mirando al suelo la direccion se
+    volvian loca; el angulo del arma saltaba 180 grados).
+  - El arma tiene mas recorrido: si llevas el mando a la cara,
+    el arma sube con las gafas y ademas se desplaza mas de lo
+    que mueves la mano (vr_vm_gain).
+  - Nuevos botones: pulsar stick izquierdo = agacharse,
+    pulsar stick derecho = esprintar.

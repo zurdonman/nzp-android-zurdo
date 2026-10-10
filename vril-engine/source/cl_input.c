@@ -604,6 +604,12 @@ void CL_SendMove (usercmd_t *cmd)
 	sizebuf_t	buf;
 	byte	data[128];
 	vec3_t tempv;
+#ifdef NZP_VR_OPENXR
+	extern qboolean VR_IsRendering(void);
+	extern qboolean VR_GetHandAim(int hand, const float *origin, float yaw_deg, float pitch_deg, float roll_deg, float *out_origin, float *out_angles);
+	extern void VR_DiagLog(const char *fmt, ...);
+	vec3_t hand_o, hand_a;
+#endif
 	buf.maxsize = 128;
 	buf.cursize = 0;
 	buf.data = data;
@@ -667,6 +673,43 @@ void CL_SendMove (usercmd_t *cmd)
 	MSG_WriteFloat (&buf, cl.mtime[0]);	// so server can get ping times
 
 	VectorAdd(cl.gun_kick, cl.viewangles, tempv);
+#ifdef NZP_VR_OPENXR
+	// VR: disparar por donde apunta el arma (mando derecho). El movimiento
+	// debe seguir a las GAFAS, no al arma: giramos forward/side del cmd el
+	// angulo que hay entre la mira del arma y la direccion de la cabeza.
+	if (VR_IsRendering() && VR_GetHandAim(1, vec3_origin, cl.viewangles[YAW], cl.viewangles[PITCH], cl.viewangles[ROLL], hand_o, hand_a)) {
+		extern qboolean VR_GetHeadWorldYaw (const float *origin, float yaw_deg, float pitch_deg, float roll_deg, float *out_yaw);
+		float hw, d, c, s, fm, sm;
+		tempv[PITCH] = hand_a[0];
+		tempv[YAW]   = hand_a[1];
+		tempv[ROLL]  = hand_a[2];
+		/* El servidor rota el wishvel con el yaw que enviamos (gun). Queremos
+		 * que avance segun la CABEZA: pre-rotamos (fm,sm) el angulo
+		 * d = head_world_yaw - gun_yaw (misma convencion, mismo pipeline). */
+		if (VR_GetHeadWorldYaw(vec3_origin, cl.viewangles[YAW], cl.viewangles[PITCH], cl.viewangles[ROLL], &hw)) {
+			d = (hw - hand_a[1]) * (float)M_PI / 180.0f;
+			while (d > (float)M_PI) d -= 2.0f * (float)M_PI;
+			while (d < -(float)M_PI) d += 2.0f * (float)M_PI;
+			c = cosf(d); s = sinf(d);
+			fm = (float)cmd->forwardmove;
+			sm = (float)cmd->sidemove;
+			/* El servidor arma wishvel = F(gun)*fm + R(gun)*sm con la convencion
+			 * del motor right=(sy,-cy). Para que el vector mundo apunte segun la
+			 * cabeza (h = gun + d) hay que pasar la intencion (fm,sm) del marco
+			 * cabeza al marco arma: proyeccion => rotacion -d. (apk31 tenia este
+			 * signo bien pero el gamepad SDL lo pisaba; apk32/33 usaban +d.) */
+			cmd->forwardmove = (short)(fm * c + sm * s);
+			cmd->sidemove    = (short)(sm * c - fm * s);
+			{
+				static int mv_dbg = 0;
+				if ((mv_dbg++ % 300) == 0)
+					VR_DiagLog("MOVE body=%.0f headw=%.0f gun=%.0f d=%.0f fm=%.0f sm=%.0f",
+						(double)cl.viewangles[YAW], (double)hw, (double)hand_a[1],
+						(double)(d * 180.0f / M_PI), (double)fm, (double)sm);
+			}
+		}
+	}
+#endif
 #ifdef __WII__
 	float xcross_scr, ycross_scr;
 	xcross_scr = (cl_crossx.value / (vid.width/2)) * (IR_YAWRANGE * 2.2); // approximate offset -- not perfect but close

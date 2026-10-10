@@ -25,6 +25,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <pspmath.h>
 #endif // __PSP__
 
+#ifdef NZP_VR_OPENXR
+#include "platform/android/vr/vr_openxr.h"
+#endif
+
 sfx_t			*cl_sfx_step[4];
 
 /*
@@ -912,6 +916,13 @@ Idle swaying
 */
 void V_AddIdle (void)
 {
+#ifdef NZP_VR_OPENXR
+	/* VR: el balanceo de reposo (idle sway) bambolea la rotacion del cuerpo que
+	 * la camara por ojo usa como ancla del mundo -> el mundo se menea solo y
+	 * marea. En VR la cabeza la mueve el usuario, no el motor: fuera. */
+	if (VR_IsRendering ())
+		return;
+#endif
 	r_refdef.viewangles[ROLL] += v_idlescale.value * sinf((float)cl.time*v_iroll_cycle.value) * v_iroll_level.value;
 	r_refdef.viewangles[PITCH] += v_idlescale.value * sinf((float)cl.time*v_ipitch_cycle.value) * v_ipitch_level.value;
 	r_refdef.viewangles[YAW] += v_idlescale.value * sinf((float)cl.time*v_iyaw_cycle.value) * v_iyaw_level.value;
@@ -928,6 +939,17 @@ Roll is induced by movement and damage
 void V_CalcViewRoll (void)
 {
 	float		side;
+
+#ifdef NZP_VR_OPENXR
+	/* VR: el roll inducido por el movimiento inclina el horizonte al caminar -> 
+	 * marea. La inclinacion real la da la pose de la cabeza. Solo llevamos la
+	 * cuenta del tiempo de dano para que no quede colgado. */
+	if (VR_IsRendering ()) {
+		if (v_dmg_time > 0)
+			v_dmg_time -= (float)host_frametime;
+		return;
+	}
+#endif
 
 	side = V_CalcRoll (cl_entities[cl.viewentity].angles, cl.velocity);
 	r_refdef.viewangles[ROLL] += side;
@@ -1245,9 +1267,17 @@ void V_CalcRefdef (void)
 	vbob[1] = V_CalcVBob(speed,1) * cl_bob.value * 50;
 	vbob[2] = V_CalcVBob(speed,2) * cl_bob.value * 50;
 
-	r_refdef.viewangles[YAW] = angledelta(r_refdef.viewangles[YAW] + (vbob[0] * 0.1f));
-	r_refdef.viewangles[PITCH] = angledelta(r_refdef.viewangles[PITCH] + (vbob[1] * 0.1f));
-	r_refdef.viewangles[ROLL] = anglemod(r_refdef.viewangles[ROLL] + (vbob[2] * 0.05f));
+#ifdef NZP_VR_OPENXR
+	/* VR: el view-bobbing (sube/baja/lanca la camara al paso) es la causa
+	 * principal del mareo del usuario: el mundo se mueve verticalmente solo.
+	 * La altura real la pone la pose de la cabeza. No aplicamos el bob. */
+	if (!VR_IsRendering ())
+#endif
+	{
+		r_refdef.viewangles[YAW] = angledelta(r_refdef.viewangles[YAW] + (vbob[0] * 0.1f));
+		r_refdef.viewangles[PITCH] = angledelta(r_refdef.viewangles[PITCH] + (vbob[1] * 0.1f));
+		r_refdef.viewangles[ROLL] = anglemod(r_refdef.viewangles[ROLL] + (vbob[2] * 0.05f));
+	}
 
 
 
@@ -1285,6 +1315,25 @@ void V_CalcRefdef (void)
 
 	if (chase_active.value)
 		Chase_Update ();
+
+#ifdef NZP_VR_OPENXR
+	/* VR: el arma vive en la mano derecha. Colocamos el viewmodel en la pose
+	 * del mando (mundo) y lo orientamos hacia donde apunta el mando. view2
+	 * (copia debajo) hereda lo mismo. Si no hay pose, se queda en la cabeza. */
+	{
+		float hand_o[3], hand_a[3];
+		if (VR_GetHandAim (1, r_refdef.vieworg, r_refdef.viewangles[YAW],
+				r_refdef.viewangles[PITCH], r_refdef.viewangles[ROLL],
+				hand_o, hand_a)) {
+			VectorCopy (hand_o, view->origin);
+			// el modelo del arma usa el pitch AL REVES que el servidor (el
+			// renderer niega angles[0] al rotar): apuntar arriba = modelo arriba
+			view->angles[PITCH] = -hand_a[0];
+			view->angles[YAW] = hand_a[1];
+			view->angles[ROLL] = hand_a[2];
+		}
+	}
+#endif
 
 	view2->origin[0] = view->origin[0];
 	view2->origin[1] = view->origin[1];

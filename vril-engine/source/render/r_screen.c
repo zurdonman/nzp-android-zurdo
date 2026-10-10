@@ -786,8 +786,49 @@ con una XrCompositionLayerProjection. La ventana 2D no se toca.
 static void SCR_UpdateScreenVR (void)
 {
 	int eye;
+	int eyes;
+	qboolean menu_mode;
+	int saved_w, saved_h;
+	int ew, eh;
 
-	for (eye = 0; eye < 2; eye++) {
+	/* Sin mapa cargado (menu / consola forzada) => MODO MENU: VR_EndFrame
+	 * presenta un quad anclado lejos (fijo, no sigue a la cabeza). Con mapa =>
+	 * proyeccion estereo dentro del mundo. Mismo criterio que con_forcedup.
+	 * Con MENU ABIERTO dentro del mapa tambien usamos el quad: la pantalla de
+	 * opciones queda plana, a vr_menu_distance metros y FIJA en el espacio
+	 * (mueves la cabeza y el panel se queda en su sitio), en vez de pegada a
+	 * las gafas como la capa de proyeccion. */
+	menu_mode = (!cl.worldmodel || cls.signon != SIGNONS ||
+		key_dest == key_menu || key_dest == key_menu_pause);
+	VR_SetMenuMode(menu_mode);
+	eyes = menu_mode ? 1 : 2;	// menu: basta ojo 0 (el quad lo usa para ambos)
+
+	/* Nitidez: el 2D (menu/HUD/consola) DEBE maquetarse a la resolucion del
+	 * OJO, no de la ventana. GL_Set2D fija el viewport con glx/gly/
+	 * glwidth/glheight y la ortho con vid.width/height; en VR esas variables
+	 * guardan el tamano de la ventana SDL (GL_BeginRendering no corre aqui),
+	 * asi que el menu se dibujaba estirado/recortado sobre el FBO del ojo
+	 * (1680x1760) dejando basura de frames anteriores = imagen borrosa con
+	 * "fantasmas" duplicados. Con vid = resolucion del ojo el 2D queda 1:1.
+	 * ANCHO DEL MENU: la res del ojo es casi cuadrada (1680x1760, aspect
+	 * 0.95) y el menu de NZP esta maquetado para 320x200 (16:10): con el
+	 * ancho cuadrado las letras quedan apretadas y el menu "corto". En modo
+	 * menu la ortho usa ancho virtual = alto*2.0 (2:1) manteniendo la
+	 * altura real del ojo; el quad se presenta tambien a 2:1, asi la
+	 * geometria final es correcta y el menu se ve ancho y espaciado. El HUD
+	 * del mundo sigue 1:1 con el ojo para no perder nitidez. */
+	VR_GetEyeSize(&ew, &eh);
+	saved_w = vid.width;
+	saved_h = vid.height;
+	if (ew > 0 && eh > 0) {
+		vid.width = menu_mode ? (int)(eh * 2.0f) : ew;
+		vid.height = eh;
+		glx = gly = 0;
+		glwidth = ew;
+		glheight = eh;
+	}
+
+	for (eye = 0; eye < eyes; eye++) {
 		if (!VR_BeginEye(eye))
 			continue;	// ojo no disponible este frame (sin capa = negro)
 
@@ -803,9 +844,52 @@ static void SCR_UpdateScreenVR (void)
 
 		if (!LoadingScreen_IsWaiting()) {
 			SCR_DrawFPS ();
+			/* GLES/Quest no tolera bien escalar la matriz alrededor del HUD.
+			 * Cambiamos su escala interna durante la llamada y la restauramos:
+			 * el HUD sigue visible y el slider vr_hud_scale funciona. */
+			{
+				int saved_hud_scale = vid.scale;
+				float hud_scale = vr_hud_scale.value;
+				if (hud_scale < 0.25f) hud_scale = 0.25f;
+				if (hud_scale > 1.0f) hud_scale = 1.0f;
+				vid.scale = (int)(saved_hud_scale * hud_scale + 0.5f);
+				if (vid.scale < 1) vid.scale = 1;
 			HUD_Draw ();
+				vid.scale = saved_hud_scale;
+			}
 			SCR_DrawConsole ();
 			Menu_Draw ();
+
+			/* Paso 6: puntero tipo raton. Marca del mando + laser rojo hasta
+			 * la cruz de interseccion sobre el panel (solo modo menu). */
+			if (menu_mode) {
+				qboolean pon, oon;
+				float pu, pv, ou, ov;
+				VR_GetPointer(&pon, &pu, &pv);
+				VR_GetPointerOrigin(&oon, &ou, &ov);
+				if (pon) {
+					int ppx = (int)(pu * (float)vid.width);
+					int ppy = (int)(pv * (float)vid.height);
+					// Laser rojo: del mando (si tiene pose) al punto apuntado.
+					if (oon) {
+						int ox = (int)(ou * (float)vid.width);
+						int oy = (int)(ov * (float)vid.height);
+						int steps = 48;
+						int i;
+						for (i = 0; i <= steps; i++) {
+							int lx = ox + (ppx - ox) * i / steps;
+							int ly = oy + (ppy - oy) * i / steps;
+							Draw_FillByColor (lx - 1, ly - 1, 3, 3, 255, 30, 30, 230);
+						}
+						// Origen del mando: cuadro blanco.
+						Draw_FillByColor (ox - 6, oy - 6, 12, 12, 240, 240, 240, 255);
+						Draw_FillByColor (ox - 3, oy - 3, 6, 6, 40, 40, 40, 255);
+					}
+					// Cruz amarilla en el punto de interseccion.
+					Draw_FillByColor (ppx - 12, ppy - 2, 24, 4, 255, 220, 40, 255);
+					Draw_FillByColor (ppx - 2, ppy - 12, 4, 24, 255, 220, 40, 255);
+				}
+			}
 		}
 
 		if (scr_loadscreen.value)
@@ -817,6 +901,9 @@ static void SCR_UpdateScreenVR (void)
 
 		VR_EndEye(eye);
 	}
+
+	vid.width = saved_w;
+	vid.height = saved_h;
 }
 #endif
 

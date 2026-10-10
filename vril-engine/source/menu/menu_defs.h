@@ -48,6 +48,7 @@ extern int				m_previous_state;
 #define m_bindings		22
 #define m_bios 			23
 #define m_gyro			24
+#define m_vr_options	27
 #define m_touch			25
 #define m_coop			26
 ///////////////////////////
