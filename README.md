@@ -16,6 +16,8 @@ Este proyecto es un **fork** del original [NZ:P (`nzportable`)](https://github.c
 - Corrección de un crash de memoria en la pantalla GAME OVER (`game_build_date` corrompible)
 - Pipeline de captura y simbolización de crashes (`scripts/watch_crash.ps1` + `scripts/sim_crash.ps1` con `ndk-stack`)
 
+La documentación técnica para mantener y ampliar el soporte OpenXR/Quest 3 está en [referencias openxr](referencias%20openxr/README.md).
+
 ---
 
 ## 📱 Requisitos
