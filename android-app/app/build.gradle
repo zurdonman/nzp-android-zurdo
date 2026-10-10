@@ -20,8 +20,8 @@ android {
         applicationId "com.nzpteam.nzportable"
         minSdkVersion Integer.parseInt(nzpMinSdk)
         targetSdkVersion 34
-        versionCode 238
-        versionName "2.3.8"
+        versionCode 239
+        versionName "2.3.9"
     }
     buildTypes {
         debug {
