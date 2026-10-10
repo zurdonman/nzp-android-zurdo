@@ -35,6 +35,7 @@ void Menu_Configuration_Draw (void);
 void Menu_Video_Draw (void);
 void Menu_Audio_Draw (void);
 void Menu_Controls_Draw (void);
+void Menu_VROptions_Draw (void);
 #ifdef PLATFORM_SUPPORTS_GYRO
 void Menu_Gyro_Draw (void);
 #endif
@@ -263,6 +264,9 @@ void Menu_Draw (void)
 
 	case m_controls:
 		Menu_Controls_Draw ();
+		break;
+	case m_vr_options:
+		Menu_VROptions_Draw();
 		break;
 
 #ifdef PLATFORM_SUPPORTS_GYRO

@@ -37,6 +37,14 @@ extern cvar_t	in_acceleration;
 extern cvar_t	in_tolerance;
 extern cvar_t	in_anub_mode;
 extern cvar_t	m_pitch;
+#ifdef NZP_VR_OPENXR
+extern cvar_t vr_hud_scale;
+extern cvar_t vr_hand_right;
+extern cvar_t vr_hand_up;
+extern cvar_t vr_hand_forward;
+extern cvar_t vr_hand_yaw;
+extern cvar_t vr_hand_pitch;
+#endif
 #ifdef PLATFORM_USES_GENERIC_GLYPHS
 extern cvar_t    cl_controllerglyphs;
 static char     *controller_glyphs_string;
@@ -66,6 +74,40 @@ void Menu_Controls_Set (void)
     m_previous_state = m_configuration;
 	m_state = m_controls;
 }
+
+#ifdef NZP_VR_OPENXR
+static void Menu_VROptions_Set(void)
+{
+	Menu_ResetMenuButtons();
+	m_previous_state = m_controls;
+	m_state = m_vr_options;
+}
+
+void Menu_VROptions_Draw(void)
+{
+	int index = 0;
+	int buttons = 1;
+	Menu_DrawCustomBackground(true);
+	Menu_DrawTitle("VR OPTIONS", MENU_COLOR_WHITE);
+	Menu_DrawMapPanel();
+
+	Menu_DrawButton(buttons++, index++, "HUD SIZE", "VR HUD size and distance.", NULL);
+	Menu_DrawOptionSlider(buttons - 1, index - 1, 0.25f, 1.0f, vr_hud_scale, "vr_hud_scale", false, true, 0.05f);
+	Menu_DrawButton(buttons++, index++, "WEAPON LEFT RIGHT", "Move hands and weapon sideways.", NULL);
+	Menu_DrawOptionSlider(buttons - 1, index - 1, -4.0f, 4.0f, vr_hand_right, "vr_hand_right", false, true, 0.25f);
+	Menu_DrawButton(buttons++, index++, "WEAPON UP DOWN", "Move hands and weapon vertically.", NULL);
+	Menu_DrawOptionSlider(buttons - 1, index - 1, -4.0f, 4.0f, vr_hand_up, "vr_hand_up", false, true, 0.25f);
+	Menu_DrawButton(buttons++, index++, "WEAPON NEAR FAR", "Move hands and weapon depth.", NULL);
+	Menu_DrawOptionSlider(buttons - 1, index - 1, -4.0f, 4.0f, vr_hand_forward, "vr_hand_forward", false, true, 0.25f);
+	Menu_DrawButton(buttons++, index++, "WEAPON YAW", "Rotate hands and weapon horizontally.", NULL);
+	Menu_DrawOptionSlider(buttons - 1, index - 1, -45.0f, 45.0f, vr_hand_yaw, "vr_hand_yaw", false, true, 1.0f);
+	Menu_DrawButton(buttons++, index++, "WEAPON PITCH", "Rotate hands and weapon vertically.", NULL);
+	Menu_DrawOptionSlider(buttons - 1, index - 1, -45.0f, 45.0f, vr_hand_pitch, "vr_hand_pitch", false, true, 1.0f);
+
+	Menu_DrawDivider(-2.5f);
+	Menu_DrawButton(-1, index, "BACK", "Return to Controls.", Menu_Controls_Set);
+}
+#endif
 
 void Menu_Controls_SetStrings (void)
 {
@@ -318,6 +360,11 @@ void Menu_Controls_Draw (void)
 
 	// Bindings
 	Menu_DrawButton (controls_buttons++, controls_index++, "BINDINGS", "Change Input Bindings.", Menu_Bindings_Set);
+
+#ifdef NZP_VR_OPENXR
+	// Ajustes reales del HUD y de la pose del arma.
+	Menu_DrawButton (controls_buttons++, controls_index++, "VR OPTIONS", "HUD and weapon position.", Menu_VROptions_Set);
+#endif
 
 	Menu_DrawDivider(-2.5);
 	Menu_DrawButton(-2, controls_index++, "APPLY", "Save & Apply Settings.", Menu_Controls_ApplySettings);

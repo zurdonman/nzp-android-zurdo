@@ -37,28 +37,29 @@ void IN_PlatformMouseMove(usercmd_t *cmd)
 	V_StopPitchDrift();
 
 #ifdef NZP_VR_OPENXR
-	/* Paso 4: head tracking. El giro de la cabeza (delta entre frames) rota
-	 * la vista del jugador; el cuerpo sigue a la cabeza. El pitch se limita
-	 * como el resto de entradas. */
+	/* Paso 4: head tracking. OJO: la pose de la cabeza ya NO se mete en
+	 * cl.viewangles. La camara por ojo (VR_GetEyeViewMatrix en R_SetupGL) usa
+	 * directamente la pose LOCAL del ojo de OpenXR, compuesta con el cuerpo.
+	 * Si ademas sumaramos el delta a cl.viewangles, la rotacion se aplicaria
+	 * DOS veces (camara + reproyeccion del compositor) -> el mundo seguira a
+	 * la cabeza (panel pegado a las gafas). Aqui solo queda el stick derecho,
+	 * que gira el CUERPO (ancla del mundo). */
 	if (VR_IsActive()) {
-		float dyaw, dpitch;
-		VR_GetHeadDelta(&dyaw, &dpitch);
-		if (dyaw || dpitch) {
-			cl.viewangles[YAW] += dyaw;
-			cl.viewangles[PITCH] += dpitch;
-			if (cl.viewangles[PITCH] > 80) cl.viewangles[PITCH] = 80;
-			if (cl.viewangles[PITCH] < -70) cl.viewangles[PITCH] = -70;
-		}
-		/* Paso 5: stick derecho gira la vista (vr_turn_speed grados/segundo
+		/* Paso 5: stick derecho gira el cuerpo (vr_turn_speed grados/segundo
 		 * a tope de stick, escalado por host_frametime). */
 		{
 			float lx, ly;
 			VR_GetLookStick(&lx, &ly);
-			if (lx || ly) {
+			/* Zona muerta 4%: el stick derecho esta muy sensible y tiembla solo
+			 * (micro-movimientos que giran la camara -> mareo). Abajo de 0.04 = 0. */
+			if (lx > -0.04f && lx < 0.04f) lx = 0.0f;
+			if (ly > -0.04f && ly < 0.04f) ly = 0.0f;
+			/* Solo horizontal: el vertical del stick NO mira arriba/abajo (el
+			 * pitch lo pone la cabeza real; el stick vertical mareaba). */
+			(void)ly;
+			if (lx) {
+				// stick derecha = girar a la DERECHA (apk31 += quedo invertido)
 				cl.viewangles[YAW] -= lx * vr_turn_speed.value * (float)host_frametime;
-				cl.viewangles[PITCH] += ly * vr_turn_speed.value * (float)host_frametime;
-				if (cl.viewangles[PITCH] > 80) cl.viewangles[PITCH] = 80;
-				if (cl.viewangles[PITCH] < -70) cl.viewangles[PITCH] = -70;
 			}
 		}
 	}

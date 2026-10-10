@@ -14,6 +14,9 @@ of the License, or (at your option) any later version.
 extern qboolean croshhairmoving;
 extern float crosshair_opacity;
 extern cvar_t in_anub_mode;
+#ifdef NZP_VR_OPENXR
+extern qboolean VR_IsActive (void);
+#endif
 static in_device_t in_active_device = IN_DEVICE_KEYBOARD_MOUSE;
 
 #ifdef PLATFORM_SUPPORTS_GYRO
@@ -190,6 +193,14 @@ void IN_Move(usercmd_t *cmd)
 		IN_GetAnalogStick(IN_STICK_LEFT, &left);
 		IN_GetAnalogStick(IN_STICK_RIGHT, &right);
 		IN_PlatformMove(cmd);
+#ifdef NZP_VR_OPENXR
+		/* VR: los mandos Quest tambien salen como gamepad SDL, y sus sticks
+		 * pisaban los de OpenXR (el derecho invertia el pitch del look, el
+		 * izquierdo sobreescribia el caminar con convencion SDL arriba=-1).
+		 * En VR los sticks los gestiona vr_openxr.c; aqui se anulan. */
+		if (VR_IsActive ())
+			left.x = left.y = right.x = right.y = 0.0f;
+#endif
 	}
 	if (IN_PlatformHasMouse()) IN_PlatformMouseMove(cmd);
 

@@ -1,6 +1,15 @@
+## Auditoria graphify y referencias VR - 2026-10-08
+
+- `graphify update c:\nazizombiesportable` completado: 24.366 nodos, 69.748 relaciones y 764 comunidades. Se actualizaron `graphify-out/graph.json`, `graph.html`, `GRAPH_REPORT.md` y `manifest.json`; el grafo anterior quedó respaldado en `graphify-out/2026-10-08/`.
+- Flujo VR actual confirmado por el grafo: `VR_PollActions()` -> `VR_GetMoveStick()` / `VR_GetLookStick()` -> `CL_SendMove()` -> `VR_GetHandAim()` y `VR_GetHeadWorldYaw()`; el render del viewmodel pasa por `V_CalcRefdef()`.
+- GTA SA VR (`C:\gts sa vr\gta-sa-vr-quest`) comparado en `PhysicalWeapon.cpp`, `Calib.cpp`, `ScopeAim.cpp`, `Locomotion.cpp`, `GestureMove.cpp` y `VrFire.cpp`.
+- Diferencias útiles: GTA separa pose base y pose final del arma, guarda calibracion por arma y modelo, usa velocidad filtrada con tiempo y reinicio por perdida de tracking, y valida la mira por proximidad a la cabeza + alineacion del rayo real del cañon. NZP ya tiene holgura `vr_vm_gain`, pero aun no tiene calibracion persistente por arma ni gate de mirilla por alineacion.
+- GTA tambien usa binding configurable L3/R3 para sprint/crouch y modos de locomocion HEAD/BODY/SNAP/SMOOTH; NZP tiene el click izquierdo/derecho fijo para stance/sprint y giro suave horizontal.
+- HL2VR (`C:\Users\juani\Downloads\0.989-20260928T210048Z-1-001\0.989\HL2VR-Standalone-0.989`) inspeccionado: la copia contiene `README`, `game_cache`, `tools`, `vr_game_resources` y artefactos del juego, pero no expone fuentes C/C++ VR comparables. No se inventaron conclusiones sobre HL2VR.
+- Siguiente mejora recomendada: implementar en NZP una calibracion persistente sencilla por arma (offset/rotacion/gain) y una alineacion de mirilla que solo active el zoom cuando el rayo real del arma coincida con la direccion de la cabeza. Mantener la locomocion actual desacoplada del yaw del arma.
 # 📋 PROGRESO DEL PROYECTO — Nazi Zombies: Portable (Android + VR)
 
-**Última actualización:** 2026-10-05 (v11: **PASOS 3-5 programados** — render estereo + head tracking + controles XrActions escritos; sesion OpenXR verificada en Quest 3 hasta `xrBeginSession` OK; root cause del -2 en swapchains corregido (config offscreen PBUFFER+ES3 para el pbuffer del contexto ES3 auxiliar); falta validacion final CON CASCO PUESTO porque el compositor pausa la app 2D al hacer begin de la sesion VR. Ver seccion "Pasos 3-5 en curso".)  
+**Última actualización:** 2026-10-06 (v14: **VR CONFIRMADO POR EL USUARIO** — menú fijo, nítido, ancho (16:10) y **SIN PARPADEO** ✅✅✅. Causa raíz del parpadeo: `vr_fps "72"` persistido en `config.cfg` del dispositivo vs 90 Hz real del Quest 3 → `Host_FilterTime` rechazaba ~20% de frames → frames sin capa = negro intercalado. Fix: borrar el valor persistido (default `vr_fps 0` = sin tope) + anti-negro (si `xrLocateViews` falla un frame se conserva la última pose válida). Menú ancho: ortho 2D a 16:10 en modo menú + quad presentado a 16:10 (`qw = qh*1.6`). Pendiente: validar estéreo dentro de mapa + punteros de mandos tipo ratón.)  
 **Estado actual:** ✅ JUGANDO (v8 táctil validado) + 🥽 **FASE VR INICIADA**. El juego base (táctil, coop LAN, triggerbot, MOVE SPEED) está entregado y publicado como release v2.0.0 en GitHub. Ahora se empieza la integración VR **paso a paso** (ver plan en la sección "🥽 FASE VR" al final de este documento).
 > **Workspace:** `c:\nazizombiesportable`
 > **Usuario:** AI-driver (no programador) — el trabajo lo ejecuta el agente
@@ -693,7 +702,7 @@ c:\nazizombiesportable\
 | 0 | Clonar SDKs + indexar + analizar referencia | ✅ hecho (hoy) |
 | 1 | Compilar el **loader OpenXR** para Android (arm64) y enlazarlo en Android.mk | ✅ hecho (libopenxr_loader.so 0,72 MB en jniLibs) |
 | 2 | Módulo `vr_openxr.c` mínimo: instance/session/swapchains + xrWaitFrame/Begin/End (sin render aún, solo log de poses) | ✅ **HECHO Y VERIFICADO** (ver detalle abajo) |
-| 3 | Render estéreo: FBO por ojo (GLES + OES_framebuffer_object) → xrEndFrame; mirror opcional | 🔶 código completo; crash xrEndFrame con capas → fix swapchains post-begin desplegado, pendiente validar con casco |
+| 3 | Render estéreo: FBO por ojo (GLES + OES_framebuffer_object) → xrEndFrame; mirror opcional | ✅ **-23 RESUELTO** (liberar swapchain ANTES de xrEndFrame). Sesión FOCUSED estable, capa aceptada sin errores. Pendiente confirmación visual estéreo |
 | 4 | Head tracking → cl.viewangles (pitch/yaw del HMD sumado al look táctil) | 🔶 código completo (delta de pose en VR_BeginFrame → in_sdl.c); **poses ya verificadas en casco** |
 | 5 | Controles: XrActions (thumbsticks, trigger, grip, haptics) mapeados a los mismos bits que el táctil | 🔶 código completo (acciones + sticks + menú VR); **"Acciones de mandos listas" verificado en casco** |
 | 6 | Menú VR (opciones vr_enabled, aim mode, recenter) + pulido | ⬜ |
@@ -707,11 +716,23 @@ c:\nazizombiesportable\
 - **FBOs ojo 0/1 listos (3 imágenes)** — swapchains GL_RGBA8 1680x1760 creados bajo ES3.
 - 3 bugs de interbloqueo corregidos: (a) `xrWaitFrame` debe llamarse SIEMPRE con sesión iniciada (Meta solo emite SYNCHRONIZED después del primer Wait — si se espera el estado, sesión clavada en READY = negro); (b) `fwi.type = XR_TYPE_FRAME_WAIT_INFO` faltaba → VALIDATION_FAILURE spam; (c) imagenes de swapchain deben permanecer adquiridas HASTA después de `xrEndFrame` (release antes = capa corrupta).
 
-**Crash SIGSEGV en xrEndFrame (libvrapiimpl, fault 0x23): CAUSA RAÍZ IDENTIFICADA.**
-- Firma: `xrEndFrame` con 1 capa (proyección O quad — ambas petan en el mismo offset `0x7d4568`) → derefencia NULL+0x23; con 0 capas funciona. El `LAYERDUMP` del diagnóstico mostró la capa perfecta (space/sc handles válidos, rects/fov/poses correctos) → el problema NO son los datos de la capa.
-- **Causa: swapchains creados ANTES de `xrBeginSession`** (workaround de la sesión anterior). El compositor de Meta solo registra las imágenes del swapchain en su tabla de capas si el swapchain se crea con la sesión **RUNNING**; pre-begin deja el registro interno NULL → SIGSEGV al presentar. La justificación del "interbloqueo" era falsa: `xrWaitFrame` no necesita swapchains.
-- **Fix desplegado (commit `0406088`)**: `xrBeginSession` directo en READY → swapchains post-begin cuando el estado es SYNCHRONIZED+ (ciclo Wait/Begin/End vacío con 0 capas avanza la máquina mientras tanto), igual que hello_xr.
-- **Pendiente: validar con casco puesto** que el primer `xrEndFrame` con capa retorna XR_SUCCESS y se ve el mundo en estéreo. APK instalada, lanzamiento: `scripts\run_android.ps1` o `am start -a android.intent.action.MAIN -c com.oculus.intent.category.VR -n com.nzpteam.nzportable/org.libsdl.app.SDLActivity`.
+### ✅ Sesión 2026-10-06 (tarde) — -23 RESUELTO (apk12)
+
+**Causa raíz REAL del `XR_ERROR_LAYER_INVALID (-23)`** (la teoría de "swapchains post-begin" de la madrugada era FALSA):
+- La imagen del swapchain debe estar en estado **READY** cuando `xrEndFrame` procesa la capa. READY = adquirida → esperada → dibujada → **LIBERADA**. Nosotros liberábamos (`xrReleaseSwapchainImage`) DESPUÉS de `xrEndFrame`, así la capa referenciaba una imagen aún "acquired" y el compositor de Meta la rechazaba con -23.
+- Por eso el -23 era **inmune a todo** (usage, formato, orden pre/post-begin, manifest ES2/ES3, tipo de capa quad vs proyección): ninguna de esas variables toca el estado de la imagen. El SIGSEGV que temíamos por liberar antes era en realidad el bug de `fei.layers` (puntero vs array de punteros), ya corregido.
+- **Fix (apk12)**: en `VR_EndFrame`, liberar ambas imágenes del swapchain JUSTO ANTES de `xrEndFrame` (con ES3 current), y NO liberar después.
+
+**Resultado medido (vr_log.txt, apk12, casco puesto):**
+- Sesión IDLE(1)→READY(2)→SYNCHRONIZED(3)→VISIBLE(4)→**FOCUSED(5)** estable.
+- `LAYERDUMP n=2 done=[1,1]` → **sin "xrEndFrame fallo"**. Contador de `-23/fallo` en todo el log = **0** (antes fallaba cada ~14 s).
+- El paso final 5→4→3→6(EXITING)→1 = el casco se durmió/quitaron, NO un crash.
+- **Limitador `vr_fps` (72)** añadido: iguala `cl_maxfps` al refresh del HMD durante la sesión VR (si se queda en 30, `Host_FilterTime` descarta la mitad de los frames → negro intercalado = parpadeo). Se restaura `cl_maxfps` al salir de VR.
+
+**Pendiente: validación visual con el usuario** (¿se ve imagen en estéreo? ¿gira la cámara al mover la cabeza?). Lanzamiento: `am start -a android.intent.action.MAIN -c com.oculus.intent.category.VR -n com.nzpteam.nzportable/org.libsdl.app.SDLActivity`.
+
+**Nota histórica (madrugada 2026-10-06, teoría ya SUPERADA):**
+- Se creyó que el crash era "swapchains creados ANTES de xrBeginSession" y se desplegó post-begin (commit `0406088`). Resultó ser -2 en post-begin (el importador del runtime no tiene EGL context) y -23 en pre-begin. La causa común era el estado de la imagen (release), no el orden de creación.
 
 **Lecciones de proceso:**
 - No fiarse de "BUILD OK" encadenado: el ndk-build puede fallar y el APK step compila el `.so` viejo. Verificar SIEMPRE marcadores string en `libmain.so` antes del APK (patrón ReadAllBytes+Contains en PROGRESO). El BuildId del crash delata un `.so` rancio.
