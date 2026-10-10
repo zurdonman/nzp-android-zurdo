@@ -204,9 +204,19 @@ jobs:
             # Y libmain.so debe quedar enlazada contra el (DT_NEEDED).
             strings "$LIBS/libmain.so" | grep -q "libopenxr_loader.so"
             echo "OK: libmain.so depende de libopenxr_loader.so"
+            # No basta con que el .so este al lado: la capa VR tiene que estar
+            # COMPILADA dentro. Si alguien rompe -DNZP_VR_OPENXR el linker no
+            # se queja (todo el codigo VR va bajo #ifdef) y el APK sale sin VR
+            # pero compilando verde. Estos dos marcadores lo delatan.
+            strings "$LIBS/libmain.so" | grep -q "xrCreateInstance"
+            strings "$LIBS/libmain.so" | grep -q "/interaction_profiles/oculus/touch_controller"
+            echo "OK: capa VR compilada dentro (API OpenXR + perfil Touch)"
           else
             echo "variante telefono: no debe llevar libopenxr_loader.so"
             ! test -f "$LIBS/libopenxr_loader.so"
+            # El telefono va en 2D: ni rastro de la capa VR.
+            ! strings "$LIBS/libmain.so" | grep -q "/interaction_profiles/oculus/touch_controller"
+            echo "OK: la de telefono no lleva nada de VR"
           fi
 
       - name: Copiar librerias nativas al proyecto Android
