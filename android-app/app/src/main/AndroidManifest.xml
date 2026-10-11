@@ -1,11 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.nzpteam.nzportable"
-    android:versionCode="1"
-    android:versionName="1.0"
+    android:versionCode="240"
+    android:versionName="2.3.10"
     android:installLocation="auto">
 
-    <uses-feature android:glEsVersion="0x00020000" android:required="true" />
+    <!-- VR (Quest): el runtime Meta lee glEsVersion del manifest para habilitar
+         las extensiones de importacion de memoria (EGL dma_buf / external
+         memory). Con 0x00020000 las DESACTIVA y logcat da "ImportTextureResourcesGLES:
+         external memory object extensions are not found" -> swapchain -2 / capa -23.
+         hello_xr declara 0x00030000. Quest 3 soporta ES 3.2. -->
+    <uses-feature android:glEsVersion="0x00030000" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
@@ -24,6 +29,11 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- NZ:P Android (zurdo): carpeta de usermaps en /sdcard/NZP/usermaps.
+         Nota: /sdcard/Android/data/com.nzpteam.nzportable/files/usermaps
+         funciona en todas las versiones de Android y Quest sin permisos extra. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
 
     <application android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"
