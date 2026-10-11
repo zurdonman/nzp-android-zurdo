@@ -2392,7 +2392,9 @@ def compile_bsp30(
         node_idx = len(nodes)
         # Ampliar minmaxs del nodo a todo el mapa para que ninguna cara asociada a este plano
         # sea descartada por R_CullBox cuando el plano aparece en otra rama
-        nodes.append([pnum, -1, -1, [-2600, -2600, -256], [2600, 2600, 640], 0, 0])
+        nodes.append([pnum, -1, -1,
+                     [int(-2600 * WORLD_SCALE_XY), int(-2600 * WORLD_SCALE_XY), -256],
+                     [int(2600 * WORLD_SCALE_XY), int(2600 * WORLD_SCALE_XY), 640], 0, 0])
         node_cells.append(bounds)
 
         b_front = list(bounds)
@@ -2407,7 +2409,15 @@ def compile_bsp30(
         return node_idx
 
     node_cells: List[Tuple[float, float, float, float, float, float]] = []
-    world_headnode0 = build_spatial_world_bsp(world_boxes_h0, (-2600.0, -2600.0, -256.0, 2600.0, 2600.0, 640.0))
+    # COTAS DEL ARBOL DE NODOS: tienen que cubrir TODA la geometria. Con
+    # WORLD_SCALE_XY el mapa llega a +-2500*escala, asi que usar +-2600 a
+    # secas deja fuera media mapa: el motor recorta por la caja de cada nodo,
+    # con lo que lo que queda fuera no se dibuja (paredes "invisibles") y
+    # Mod_PointInLeaf devuelve hoja solida, asi que el jugador no puede
+    # moverse y los traceline salen allsolid (el laser se queda fijo).
+    wb = (-2600.0 * WORLD_SCALE_XY, -2600.0 * WORLD_SCALE_XY, -256.0,
+           2600.0 * WORLD_SCALE_XY, 2600.0 * WORLD_SCALE_XY, 640.0)
+    world_headnode0 = build_spatial_world_bsp(world_boxes_h0, wb)
     assert world_headnode0 == 0
 
     # Asignacion de caras a nodos.
