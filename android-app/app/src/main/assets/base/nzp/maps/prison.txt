@@ -1,11 +1,11 @@
-Tranzit (BO2 Green Run)
-Full-scale Green Run loop:
-Bus Depot, Tunnel, Diner,
-Cornfield Nacht, Farm,
-Power Station & Town.
-Includes moving T.E.D.D. Bus,
-Green Lamp Teleporters, Lava,
-8 Perks & Pack-a-Punch.
+Prison (Penitenciaria)
+Bloque de celdas en dos
+plantas, ocho celdas,
+comedor, enfermeria y
+patio amurallado con
+torres de vigilancia.
+Los zombies entran por
+las zonas que abras.
 
 NZ:P Android (zurdo)
 1

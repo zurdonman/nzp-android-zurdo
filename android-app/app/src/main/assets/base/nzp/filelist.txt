@@ -304,6 +304,9 @@ maps/nzp_xmas2.bsp
 maps/nzp_xmas2.nsz
 maps/nzp_xmas2.txt
 maps/nzp_xmas2.way
+maps/prison.bsp
+maps/prison.txt
+maps/prison.way
 maps/town.bsp
 maps/town.txt
 maps/town.way
