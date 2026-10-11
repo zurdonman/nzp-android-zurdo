@@ -350,8 +350,10 @@ jobs:
           - VR (Quest): sesion OpenXR real; si el dispositivo no tiene runtime
             OpenXR el juego sigue arrancando en 2D sin mas.
           - Mapas de Tranzit (Green Run) y Town incluidos en los assets
-          - Tranzit: mapa ampliado x5.8 en superficie (290 x 290 m, ~83.800 m2)
-            y niebla abierta de 36 m a 97 m de visibilidad
+          - Tranzit: Green Run a escala 1:1 de diseno (127 x 127 m), con
+            Bus Depot, Tunel, Diner, Granja, Central y Town
+          - Tranzit: reconstruido sin el inflado de coordenadas (x2.35), que
+            dejaba media mapa fuera del arbol de nodos y rompia colisiones
           - Tranzit: segundas plantas transitables (pajar del granero y azotea
             del Diner) con nodos de IA para que los zombies tambien suban
           - El motor escribe un registro de cada sesion en

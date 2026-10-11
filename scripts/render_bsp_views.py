@@ -536,7 +536,7 @@ class BSPScene:
 
 # El mapa se genera con WORLD_SCALE_XY sobre las coordenadas de diseno:
 # las camaras estan expresadas en ese mismo espacio de diseno.
-WORLD_SCALE_XY = 2.35
+WORLD_SCALE_XY = 1.0
 
 
 # ---------------------------------------------------------------------------

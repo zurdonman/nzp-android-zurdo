@@ -60,7 +60,7 @@ FULLBRIGHT_TEXTURES: Dict[str, Tuple[int, int, int]] = {
 #  La altura (Z) NO se escala: los techos de 208u (~5.2 m) ya son correctos
 #  para una escala humana y estirarlos dejaria naves desproporcionadas.
 # ============================================================================
-WORLD_SCALE_XY = 2.35
+WORLD_SCALE_XY = 1.0
 WORLD_SCALE_Z = 1.0
 
 
