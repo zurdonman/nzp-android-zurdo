@@ -204,15 +204,90 @@ void Dir_Close(GlobalDir *d)
     free(d);
 }
 
+#ifdef __ANDROID__
+extern int NZPData_SyncUserMaps(const char *basedir);
+#endif
+
+static void Menu_CustomMaps_StripColorCodes (char *s)
+{
+	char *dst = s;
+	const char *src = s;
+
+	if (!s)
+		return;
+
+	while (*src) {
+		if (src[0] == '^' && src[1] >= '0' && src[1] <= '9') {
+			src += 2;
+			continue;
+		}
+		*dst++ = *src++;
+	}
+	*dst = '\0';
+}
+
+static int Menu_CustomMaps_GetSortPriority (const char *bsp_name)
+{
+	static const char *const kStockMaps[] = {
+		"ndu", "nzp_warehouse2", "nzp_xmas2", "nzp_warehouse",
+		"christmas_special", "lexi_house", "lexi_temple", "lexi_overlook"
+	};
+	static const char *const kBundledBonusMaps[] = {
+		"4all", "b1oodv3", "b1oodv4", "boxxer", "bunker-defense",
+		"dung3on", "fegefeuer", "hangar", "loop", "wahnsinn", "weapon_test"
+	};
+	size_t i;
+
+	if (!bsp_name)
+		return 3;
+
+	for (i = 0; i < sizeof(kStockMaps) / sizeof(kStockMaps[0]); ++i) {
+		if (!strcmp(bsp_name, kStockMaps[i]))
+			return 2;
+	}
+	for (i = 0; i < sizeof(kBundledBonusMaps) / sizeof(kBundledBonusMaps[0]); ++i) {
+		if (!strcmp(bsp_name, kBundledBonusMaps[i]))
+			return 1;
+	}
+	/* Mapas como town y cualquier usermap instalado por el usuario van primero */
+	return 0;
+}
+
+static void Menu_CustomMaps_SortMaps (void)
+{
+	int i, j;
+
+	for (i = 0; i < num_user_maps - 1; ++i) {
+		for (j = i + 1; j < num_user_maps; ++j) {
+			const char *name_i = custom_maps[i].map_name ? custom_maps[i].map_name : "";
+			const char *name_j = custom_maps[j].map_name ? custom_maps[j].map_name : "";
+			int prio_i = Menu_CustomMaps_GetSortPriority(name_i);
+			int prio_j = Menu_CustomMaps_GetSortPriority(name_j);
+
+			if (prio_j < prio_i ||
+			    (prio_j == prio_i && strcmp(name_j, name_i) < 0)) {
+				usermap_t tmp = custom_maps[i];
+				custom_maps[i] = custom_maps[j];
+				custom_maps[j] = tmp;
+			}
+		}
+	}
+}
+
 void Menu_CustomMaps_AllocStrings (void)
 {
-	custom_maps[num_user_maps].map_name = malloc(MAX_QPATH*sizeof(char));
-	custom_maps[num_user_maps].map_name_pretty = malloc(MAX_QPATH*sizeof(char));
-	custom_maps[num_user_maps].map_author = malloc(MAX_QPATH*sizeof(char));
-	custom_maps[num_user_maps].map_thumbnail_path = malloc(MAX_OSPATH*sizeof(char));
+	if (!custom_maps[num_user_maps].map_name)
+		custom_maps[num_user_maps].map_name = malloc(MAX_QPATH*sizeof(char));
+	if (!custom_maps[num_user_maps].map_name_pretty)
+		custom_maps[num_user_maps].map_name_pretty = malloc(MAX_QPATH*sizeof(char));
+	if (!custom_maps[num_user_maps].map_author)
+		custom_maps[num_user_maps].map_author = malloc(MAX_QPATH*sizeof(char));
+	if (!custom_maps[num_user_maps].map_thumbnail_path)
+		custom_maps[num_user_maps].map_thumbnail_path = malloc((MAX_OSPATH+MAX_QPATH)*sizeof(char));
 
 	for (int i = 0; i < MAP_DESC_LINES; i++) {
-		custom_maps[num_user_maps].map_desc[i] = malloc(MAX_QPATH*sizeof(char));
+		if (!custom_maps[num_user_maps].map_desc[i])
+			custom_maps[num_user_maps].map_desc[i] = malloc(MAX_QPATH*sizeof(char));
 	}
 }
 
@@ -223,16 +298,24 @@ void Menu_CustomMaps_AddMap (char *map_name)
 	char settings_path[MAX_OSPATH*2];
 	int total_settings_lines = 0;
 
-	// We found a map
-	// Explicitly clear fields to be safe
-	memset(&custom_maps[num_user_maps], 0, sizeof(usermap_t));
-	// Allocate space for strings
+	for (int i = 0; i < num_user_maps; i++) {
+		if (custom_maps[i].map_name && !strcmp(custom_maps[i].map_name, map_name))
+			return;
+	}
+
+	// Allocate or reuse space for strings
 	Menu_CustomMaps_AllocStrings();
+	custom_maps[num_user_maps].occupied = true;
+	custom_maps[num_user_maps].map_use_thumbnail = 1;
+	custom_maps[num_user_maps].map_allow_game_settings = 1;
+	custom_maps[num_user_maps].map_name_pretty[0] = '\0';
+	custom_maps[num_user_maps].map_author[0] = '\0';
+	for (int i = 0; i < MAP_DESC_LINES; i++) {
+		custom_maps[num_user_maps].map_desc[i][0] = '\0';
+	}
+
 	// Copy over the map name
 	snprintf(custom_maps[num_user_maps].map_name, MAX_QPATH, "%s", map_name);
-
-	// Map is occupied
-	custom_maps[num_user_maps].occupied = true;
 
 	// Set setting path to read 
 	snprintf(settings_path, MAX_OSPATH*2, "maps/%s.txt", map_name);
@@ -242,6 +325,7 @@ void Menu_CustomMaps_AddMap (char *map_name)
 	if(COM_FOpenFile(settings_path, &settings_file) != -1) {
 		while ((fgets(settings_line, sizeof(settings_line), settings_file) != NULL) && total_settings_lines < MAX_SETTINGS_LINES) {
 			strip_newline (settings_line);
+			Menu_CustomMaps_StripColorCodes (settings_line);
 			switch (total_settings_lines) {
 				// Map Name
 				case 0:
@@ -269,24 +353,19 @@ void Menu_CustomMaps_AddMap (char *map_name)
 			total_settings_lines++;
 		}
 		fclose(settings_file);
-	} else {
-		// No settings file
-		// set the pretty map name for menu drawing
-		// and zero out the rest of memory
-		snprintf(custom_maps[num_user_maps].map_name_pretty, MAX_QPATH, "%s", map_name);
-		for (int i = 0; i < MAP_DESC_LINES; i++) {
-			custom_maps[num_user_maps].map_desc[i][0] = '\0';
+		if (custom_maps[num_user_maps].map_name_pretty[0] == '\0') {
+			snprintf(custom_maps[num_user_maps].map_name_pretty, MAX_QPATH, "%s", map_name);
 		}
-		custom_maps[num_user_maps].map_author[0] = '\0';
-		custom_maps[num_user_maps].map_use_thumbnail = 0;
-		custom_maps[num_user_maps].map_allow_game_settings = 0;
-	}
-	// Set the thumbnail path for loadscreens
-	if (custom_maps[num_user_maps].map_use_thumbnail) {
-		snprintf(custom_maps[num_user_maps].map_thumbnail_path, MAX_OSPATH+MAX_QPATH, "gfx/menu/custom/%s", map_name);
 	} else {
-		custom_maps[num_user_maps].map_thumbnail_path[0] = '\0';
+		// No settings file: provide sensible defaults so bare .bsp usermaps work cleanly
+		snprintf(custom_maps[num_user_maps].map_name_pretty, MAX_QPATH, "%s", map_name);
+		snprintf(custom_maps[num_user_maps].map_desc[0], MAX_QPATH, "Custom Usermap (%s.bsp)", map_name);
+		custom_maps[num_user_maps].map_author[0] = '\0';
+		custom_maps[num_user_maps].map_use_thumbnail = 1;
+		custom_maps[num_user_maps].map_allow_game_settings = 1;
 	}
+	// Set the thumbnail path for loadscreens and menu preview
+	snprintf(custom_maps[num_user_maps].map_thumbnail_path, MAX_OSPATH+MAX_QPATH, "gfx/menu/custom/%s", map_name);
 	// Increment total custom maps amount
 	num_user_maps++;
 }
@@ -295,6 +374,8 @@ void Menu_CustomMaps_MapFinder (void)
 {
 	char 	d_name[MAX_QPATH];
 	char	map_name[MAX_QPATH];
+
+	num_user_maps = 0;
 
 #ifndef PLATFORM_GAMEFILES_IN_PAK
 	// File structure is loose folders
@@ -310,7 +391,7 @@ void Menu_CustomMaps_MapFinder (void)
 			(!strcmp(COM_FileExtension(d_name),"BSP"))) {
 			// Max amount of custom maps is reached
 			if (num_user_maps >= MAX_CUSTOMMAPS) {
-				Sys_Error("Too many custom maps (max %d)\n", MAX_CUSTOMMAPS);
+				Con_Printf("Warning: Too many custom maps (max %d)\n", MAX_CUSTOMMAPS);
 				break;
 			}
 
@@ -332,6 +413,10 @@ void Menu_CustomMaps_MapFinder (void)
 	PakDir *pak = Pak_Open(pakfile);
     if (pak) {
         while (Pak_ReadMap(pak, d_name, sizeof(d_name))) {
+			if (num_user_maps >= MAX_CUSTOMMAPS) {
+				Con_Printf("Warning: Too many custom maps (max %d)\n", MAX_CUSTOMMAPS);
+				break;
+			}
 			COM_StripExtension(d_name, map_name);
 			strtolower(map_name);
 
@@ -340,6 +425,8 @@ void Menu_CustomMaps_MapFinder (void)
         Pak_Close(pak);
     }
 #endif
+	Menu_CustomMaps_SortMaps();
+	Menu_InitStockMaps();
 	custom_map_pages = (int)ceil((double)(num_user_maps)/8);
 }
 
@@ -350,21 +437,37 @@ Preload_CustomMap_Images
 */
 void Menu_Preload_Custom_Images(void) 
 {
+	int fallback_image = Image_LoadImage("gfx/menu/custom", IMAGE_PNG | IMAGE_TGA | IMAGE_JPG, 1, false, false);
+
 	// Reset number of custom images before each load
 	num_custom_images = 0;
 
     // Pre-load all custom map menu images to use in the background
 	for (int i = 0; i < num_user_maps; i++) {
-		if (custom_maps[i].map_use_thumbnail == 1) {
-			// custom map is loaded and has a menu image
-			// load with linear filtering on psp
-			int menu_image = Image_LoadImage(custom_maps[i].map_thumbnail_path, IMAGE_PNG | IMAGE_TGA | IMAGE_JPG, 1, false, false);
-			if (menu_image > 0) {
-				menu_usermap_image[i] = menu_image;
-				num_custom_images++;
-			}
+		int menu_image = -1;
+		if (custom_maps[i].map_use_thumbnail == 1 && custom_maps[i].map_thumbnail_path != NULL && custom_maps[i].map_thumbnail_path[0] != '\0') {
+			menu_image = Image_LoadImage(custom_maps[i].map_thumbnail_path, IMAGE_PNG | IMAGE_TGA | IMAGE_JPG, 1, false, false);
+		}
+		if (menu_image <= 0) {
+			menu_image = fallback_image;
+		}
+		if (menu_image > 0) {
+			menu_usermap_image[i] = menu_image;
+			num_custom_images = i + 1;
+		} else {
+			menu_usermap_image[i] = menu_bk;
 		}
 	}
+}
+
+void Menu_CustomMaps_Rescan_f (void)
+{
+#ifdef __ANDROID__
+	NZPData_SyncUserMaps(NULL);
+#endif
+	Menu_CustomMaps_MapFinder();
+	Menu_Preload_Custom_Images();
+	Con_Printf("Usermaps rescanned: %d total maps available.\n", num_user_maps);
 }
 
 void Menu_CustomMaps_SetMap (void)
@@ -392,6 +495,12 @@ void Menu_CustomMaps_PrevPage (void)
 
 void Menu_CustomMaps_Set (void)
 {
+#ifdef __ANDROID__
+	if (NZPData_SyncUserMaps(NULL) > 0) {
+		Menu_CustomMaps_MapFinder();
+		Menu_Preload_Custom_Images();
+	}
+#endif
 	Menu_ResetMenuButtons();
 	
 	user_maps_page = 0;

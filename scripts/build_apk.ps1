@@ -7,8 +7,17 @@
 $ErrorActionPreference = 'Stop'
 
 $ROOT = "c:\nazizombiesportable"
+if (-not (Test-Path $ROOT)) {
+  $ROOT = Split-Path -Parent $PSScriptRoot
+}
 $APP  = "$ROOT\android-app"
 $APK  = "$APP\app\build\outputs\apk\debug\app-debug.apk"
+
+# Regenerar siempre filelist.txt antes de empaquetar la APK
+$GEN_FILELIST = "$ROOT\scripts\gen_asset_filelist.ps1"
+if (Test-Path $GEN_FILELIST) {
+  & $GEN_FILELIST -AssetRoot "$APP\app\src\main\assets\base\nzp"
+}
 
 $env:JAVA_HOME        = 'C:\Users\juani\jdk17\jdk-17.0.13+11'
 $env:ANDROID_HOME     = 'C:\Users\juani\AppData\Local\Android\Sdk'
