@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.nzpteam.nzportable"
-    android:versionCode="1"
-    android:versionName="1.0"
+    android:versionCode="246"
+    android:versionName="2.3.16"
     android:installLocation="auto">
 
     <!-- VR (Quest): el runtime Meta lee glEsVersion del manifest para habilitar
@@ -29,6 +29,11 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- NZ:P Android (zurdo): carpeta de usermaps en /sdcard/NZP/usermaps.
+         Nota: /sdcard/Android/data/com.nzpteam.nzportable/files/usermaps
+         funciona en todas las versiones de Android y Quest sin permisos extra. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="29" />
 
     <application android:label="@string/app_name"
         android:icon="@mipmap/ic_launcher"

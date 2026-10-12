@@ -181,7 +181,6 @@ cvar_t	vr_world_scale = {"vr_world_scale", "18", true};	// unidades Quake por me
 cvar_t	vr_pointer = {"vr_pointer", "1", true};	// 1 = puntero de mando tipo raton en menus
 cvar_t	vr_fov_mult = {"vr_fov_mult", "1.0", true};	// 1.0 = proyeccion exacta del HMD (rigido). >1 ensancha el render pero el compositor lo recorta -> efecto goma/chicle al girar (NO usar)
 cvar_t	vr_vm_scale = {"vr_vm_scale", "0.65", true};	// escala del viewmodel en VR (manos/arma)
-cvar_t	vr_vm_gain = {"vr_vm_gain", "5.0", true};	// holgura: multiplica mucho el desplazamiento del mando alrededor de su postura media
 cvar_t	vr_hud_scale = {"vr_hud_scale", "0.65", true};	// HUD mas pequeno = mas lejos visualmente en VR
 cvar_t	vr_camera_right = {"vr_camera_right", "0.75", true};	// desplazamiento lateral de la primera persona, unidades Quake
 cvar_t	vr_hand_right = {"vr_hand_right", "-0.75", true};	// mano/arma a izquierda, unidades Quake
@@ -384,7 +383,6 @@ qboolean VR_Init (void)
 	Cvar_RegisterVariable (&vr_pointer);
 	Cvar_RegisterVariable (&vr_fov_mult);
 	Cvar_RegisterVariable (&vr_vm_scale);
-	Cvar_RegisterVariable (&vr_vm_gain);
 	Cvar_RegisterVariable (&vr_hud_scale);
 	Cvar_RegisterVariable (&vr_camera_right);
 	Cvar_RegisterVariable (&vr_hand_right);
@@ -2438,39 +2436,13 @@ static qboolean VR_LocateHand (int hand, XrPosef *outpose)
 			XR_SPACE_LOCATION_ORIENTATION_VALID_BIT)))
 		return false;
 	*outpose = loc.pose;
-	/* HOLGURA (vr_vm_gain): el arma se desplaza alrededor de la POSTURA MEDIA
-	 * de la mano, amplificado x gain. Con gain 1.6, mover la mano 10 cm mueve
-	 * el arma 16 cm -> mas recorrido, menos rigidez. La media sigue a la mano
-	 * con un resorte lento (quieto, el arma acaba exactamente en la mano). */
-	{
-		static XrVector3f avg_pos[2];
-		static double avg_time[2];
-		static qboolean avg_valid[2];
-		float gain = vr_vm_gain.value;
-		double now;
-		XrVector3f *p = &outpose->position;
-		if (gain < 1.0f) gain = 1.0f;
-		if (gain > 8.0f) gain = 8.0f;
-		if (gain > 1.01f) {
-			now = Sys_FloatTime();
-			if (!avg_valid[hand] || now - avg_time[hand] > 0.5) {
-				avg_pos[hand] = *p;
-				avg_valid[hand] = true;
-			} else {
-				double dt = now - avg_time[hand];
-				float a;
-				if (dt > 0.1) dt = 0.1;
-				a = (float)(1.0 - exp(-dt * 2.5));
-				avg_pos[hand].x += (p->x - avg_pos[hand].x) * a;
-				avg_pos[hand].y += (p->y - avg_pos[hand].y) * a;
-				avg_pos[hand].z += (p->z - avg_pos[hand].z) * a;
-			}
-			avg_time[hand] = now;
-			p->x = avg_pos[hand].x + (p->x - avg_pos[hand].x) * gain;
-			p->y = avg_pos[hand].y + (p->y - avg_pos[hand].y) * gain;
-			p->z = avg_pos[hand].z + (p->z - avg_pos[hand].z) * gain;
-		}
-	}
+	/* Sin holgura: el arma va RIGIDA 1:1 con el mando, sin resorte.
+	 * Antes aqui habia una "postura media" de la mano que perseguia al
+	 * mando con un resorte lento y un multiplicador de recorrido
+	 * (vr_vm_gain, por defecto 5.0): al mover el mando el arma se iba
+	 * mucho mas lejos y luego la media tiraba de ella hacia la posicion
+	 * de reposo. Ese era el efecto muelle que se notaba al apuntar y ya
+	 * no existe: la pose que devuelve xrLocateSpace se usa tal cual. */
 	return true;
 }
 

@@ -93,10 +93,8 @@ int Menu_UserMapSupportsGameSettings (char *bsp_name)
 int Menu_GetMapImage (char *bsp_name)
 {
 	for (int i = 0; i < num_user_maps; i++) {
-		if (custom_maps[i].map_use_thumbnail) {
-			if (!strcmp(bsp_name, custom_maps[i].map_name)) {
-				return menu_usermap_image[i];
-			}
+		if (!strcmp(bsp_name, custom_maps[i].map_name) && menu_usermap_image[i] > 0) {
+			return menu_usermap_image[i];
 		}
 	}
 
@@ -717,7 +715,9 @@ void Menu_DrawMapButton (int order, int button_index, int usermap_index, int map
 
 		UI_SetAlignment (UI_ANCHOR_LEFT, UI_ANCHOR_TOP);
 		// Draw map thumbnail picture
-		Menu_DrawPicStretch (x_pos, y_pos, menu_usermap_image[index], image_width, image_height);
+		if (menu_usermap_image[index] > 0) {
+			Menu_DrawPicStretch (x_pos, y_pos, menu_usermap_image[index], image_width, image_height);
+		}
 
 		// Draw border around map image
 		Menu_DrawMapBorder (x_pos/vid.scale, y_pos/vid.scale, image_width, image_height);
