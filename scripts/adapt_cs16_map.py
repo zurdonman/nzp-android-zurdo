@@ -93,24 +93,24 @@ for i, s in enumerate(spawns[:12]):
         pc = n
 
 # --- armas de pared + compra emparejadas ---
-WALLS = [("m1911", "500", "250"), ("greasegun", "750", "375"), ("thompson", "1200", "600"),
-         ("shotgun", "1200", "600"), ("kar", "1500", "750")]
-for i, (w, c, c2) in enumerate(WALLS):
+# Los mapas del juego identifican las armas por ID numerico, no por nombre.
+WALLS = [(2, 500), (5, 600), (21, 1200), (8, 1200), (23, 1500)]
+for i, (wid, cost) in enumerate(WALLS):
     p = spawns[(i * 3 + 1) % len(spawns)]
     tn = f"ww_{i}"
-    E.append({"classname": "weapon_wall", "targetname": tn, "origin": f3(p, 40), "angle": "0"})
-    E.append({"classname": "buy_weapon", "target": tn, "weapon": w, "cost": c, "cost2": c2,
-              "origin": f3(p, 40)})
+    E.append({"classname": "weapon_wall", "targetname": tn, "origin": f3(p, 40),
+              "angle": "0", "sequence": str(wid)})
+    E.append({"classname": "buy_weapon", "target": tn, "weapon": str(wid),
+              "cost": str(cost), "cost2": str(cost // 2), "origin": f3(p, 40)})
 
 # --- perks ---
 PERKS = [("perk_juggernog", "2500"), ("perk_speed", "3000"), ("perk_double", "2000"),
          ("perk_revive", "1500"), ("perk_mule", "4000"), ("perk_deadshot", "2000")]
 for i, (pk, cost) in enumerate(PERKS):
     p = spawns[(i * 4 + 2) % len(spawns)]
-    tn = f"pk_{i}"
-    E.append({"classname": pk, "targetname": tn, "origin": f3(p, 8)})
-    E.append({"classname": "buy_weapon", "target": tn, "weapon": pk, "cost": cost, "cost2": cost,
-              "origin": f3(p, 8)})
+    # la maquina lleva su propio coste, no se compra con buy_weapon
+    E.append({"classname": pk, "targetname": f"pk_{i}", "origin": f3(p, 8),
+              "cost": cost, "cost2": cost, "angles": "0 0 0"})
 
 E.append({"classname": "mystery_box", "origin": f3(spawns[len(spawns) // 2], 8)})
 E.append({"classname": "power_switch", "origin": f3(spawns[3], 8)})

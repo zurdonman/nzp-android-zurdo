@@ -64,6 +64,8 @@ T_DARK = "m_metal_darkBlu"
 WALL_H = 144          # altura de planta (dos plantas = 288)
 CELL_W = 160          # ancho de celda
 CORRIDOR = 200        # ancho del pasillo central
+WIN_Z0 = 40.0         # franja del muro que ocupa una ventana
+WIN_Z1 = 112.0
 
 
 class World:
@@ -119,21 +121,37 @@ class World:
         return out
 
     def shell(self, x0, y0, x1, y1, z0, z1, tex=T_WALL, floor_t=T_FLOOR,
-              ceil_t=T_CEIL, doors=()):
-        """Caja cerrada: suelo, techo y 4 paredes con huecos de puerta.
+              ceil_t=T_CEIL, doors=(), windows=()):
+        """Caja cerrada: suelo, techo y 4 paredes con huecos.
 
-        doors = lista de (lado, pos_a, pos_b) con lado en 'N','S','E','W'.
+        doors   = (lado, a, b) hueco de puerta, de suelo a techo.
+        windows = (lado, a, b) hueco de ventana: solo se abre la franja
+                  WIN_Z0..WIN_Z1, el resto del muro sigue en pie.
+        lado en 'N','S','E','W'.
         """
         self.floor(x0, y0, x1, y1, z0, tex=floor_t)
         self.ceiling(x0, y0, x1, y1, z1, tex=ceil_t)
-        gn = [g[1:] for g in doors if g[0] == "N"]
-        gs = [g[1:] for g in doors if g[0] == "S"]
-        ge = [g[1:] for g in doors if g[0] == "E"]
-        gw = [g[1:] for g in doors if g[0] == "W"]
-        self.wall_x(y1, x0, x1, z0, z1, tex=tex, gaps=gn)
-        self.wall_x(y0, x0, x1, z0, z1, tex=tex, gaps=gs)
-        self.wall_y(x1, y0, y1, z0, z1, tex=tex, gaps=ge)
-        self.wall_y(x0, y0, y1, z0, z1, tex=tex, gaps=gw)
+        sides = ("N", "S", "E", "W")
+        dg = {s: [g[1:] for g in doors if g[0] == s] for s in sides}
+        vg = {s: [g[1:] for g in windows if g[0] == s] for s in sides}
+
+        def band(mk, holes, wins):
+            """Tres franjas si la pared tiene ventanas, una sola si no."""
+            if wins:
+                mk(z0, WIN_Z0, [])                 # antepecho
+                mk(WIN_Z0, WIN_Z1, holes + wins)   # la propia ventana
+                mk(WIN_Z1, z1, [])                 # dintel
+            else:
+                mk(z0, z1, holes)
+
+        band(lambda a, b, g: self.wall_x(y1, x0, x1, a, b, tex=tex, gaps=g),
+             dg["N"], vg["N"])
+        band(lambda a, b, g: self.wall_x(y0, x0, x1, a, b, tex=tex, gaps=g),
+             dg["S"], vg["S"])
+        band(lambda a, b, g: self.wall_y(x1, y0, y1, a, b, tex=tex, gaps=g),
+             dg["E"], vg["E"])
+        band(lambda a, b, g: self.wall_y(x0, y0, y1, a, b, tex=tex, gaps=g),
+             dg["W"], vg["W"])
 
     # -- entidades ----------------------------------------------------------
     def ent(self, classname, origin=None, **kv):
@@ -185,11 +203,51 @@ def build_prison_world() -> World:
     Z2, Z3 = WALL_H, WALL_H * 2    # planta alta
 
     # ------------------------------------------------------------------
+    # VENTANAS CON TABLAS
+    # Cada ventana es un trio: item_barricade en el hueco, un path_corner
+    # en el exterior y un spawn_zombie detras. El zombie pertenece a la
+    # zona indicada, llega al hueco, rompe las maderas y entra: asi es
+    # como se "hacen puntos" matandolos mientras rompen.
+    # ------------------------------------------------------------------
+    n_bar = [0]
+
+    def window(name, x, y, zone, ox, oy, ang):
+        """Hueco con tablas en (x,y); el zombie nace fuera, en (ox,oy)."""
+        n_bar[0] += 1
+        pc = "pc_bar%d" % n_bar[0]
+        w.ent("item_barricade", (x, y, WIN_Z0 + 8), angles=ang,
+              targetname=name, model="models/misc/window.mdl",
+              oldmodel="sounds/misc/barricade.wav",
+              aistatus="sounds/misc/barricade_destroy.wav")
+        w.ent("path_corner", (ox, oy, 40), targetname=pc, target=name)
+        w.ent("spawn_zombie", (ox, oy, 40), angles="0 0 0",
+              targetname=zone, target=pc, spawnflags="0")
+
+    # ------------------------------------------------------------------
+    # GALERIA EXTERIOR: anillo cerrado alrededor del edificio
+    # (X[-1500..1500] Y[-1700..2300] menos la planta X[-1100..1100]
+    # Y[-1300..1900]). Es donde viven los zombies que asaltan las
+    # ventanas. Va cerrado con techo porque no hay textura de cielo.
+    # ------------------------------------------------------------------
+    for ax0, ay0, ax1, ay1 in ((-1500.0, -1700.0, 1500.0, -1300.0),   # sur
+                               (-1500.0, 1900.0, 1500.0, 2300.0),    # norte
+                               (-1500.0, -1300.0, -1100.0, 1900.0),  # oeste
+                               (1100.0, -1300.0, 1500.0, 1900.0)):   # este
+        w.floor(ax0, ay0, ax1, ay1, 0.0, tex=T_FLOOR2)
+        w.ceiling(ax0, ay0, ax1, ay1, 400.0, tex=T_CEIL)
+    w.wall_x(2300.0, -1500.0, 1500.0, 0.0, 400.0, tex=T_CONC)
+    w.wall_x(-1700.0, -1500.0, 1500.0, 0.0, 400.0, tex=T_CONC)
+    w.wall_y(-1500.0, -1700.0, 2300.0, 0.0, 400.0, tex=T_CONC)
+    w.wall_y(1500.0, -1700.0, 2300.0, 0.0, 400.0, tex=T_CONC)
+
+    # ------------------------------------------------------------------
     # RECEPCION / SPAWN  Y[-1300..-900]
     # ------------------------------------------------------------------
     ry0, ry1 = -1300.0, -900.0
     w.shell(X0, ry0, X1, ry1, Z0, Z1, tex=T_WALL2, floor_t=T_FLOOR2,
-            doors=[("N", -120, 120)])
+            doors=[("N", -120, 120)],
+            windows=[("W", -1240, -1160), ("W", -1040, -960),
+                     ("E", -1240, -1160), ("E", -1040, -960)])
     # mostrador de entrada
     w.brush(-260, -1120, Z0, 260, -1080, 44, tex=T_WOOD, top=T_WOODTOP)
     w.ent("info_player_start", (-600, -1100, 40), angles="0 0 0")
@@ -209,7 +267,9 @@ def build_prison_world() -> World:
     # ------------------------------------------------------------------
     by0, by1 = -900.0, 200.0
     w.shell(X0, by0, X1, by1, Z0, Z3, tex=T_CONC, floor_t=T_FLOOR,
-            doors=[("S", -120, 120), ("N", -120, 120)])
+            doors=[("S", -120, 120), ("N", -120, 120)],
+            windows=[("W", -800, -740), ("W", -280, -220),
+                     ("E", -800, -740), ("E", -280, -220)])
     # forjado de la planta alta con hueco sobre el pasillo
     w.brush(X0, by0, Z1, -CORRIDOR / 2, by1, Z1 + 16, tex=T_CONC)
     w.brush(CORRIDOR / 2, by0, Z1, X1, by1, Z1 + 16, tex=T_CONC)
@@ -226,9 +286,20 @@ def build_prison_world() -> World:
                 cx0, cx1 = CORRIDOR / 2, 1080.0
             cells.append((side, i, cx0, cy0, cx1, cy1))
             for z0, z1 in ((Z0, Z1), (Z2, Z3)):
-                # pared divisoria entre celdas y muro al pasillo con hueco
-                w.wall_y(cx0 if side < 0 else cx1, cy0, cy1, z0, z1,
-                         tex=T_CONC, gaps=[(cy1 - 120, cy1 - 40)])
+                # muro exterior de la celda: hueco de paso + ventana
+                wx = cx0 if side < 0 else cx1
+                paso = (cy1 - 120, cy1 - 40)
+                # solo las celdas 0 y 2 de la planta baja dan al exterior
+                vg = [(cy0 + 60, cy0 + 120)] if (z0 == Z0 and i in (0, 2)) else []
+                if vg:
+                    w.wall_y(wx, cy0, cy1, z0, WIN_Z0, tex=T_CONC,
+                             gaps=[paso])
+                    w.wall_y(wx, cy0, cy1, WIN_Z0, WIN_Z1, tex=T_CONC,
+                             gaps=[paso] + vg)
+                    w.wall_y(wx, cy0, cy1, WIN_Z1, z1, tex=T_CONC,
+                             gaps=[paso])
+                else:
+                    w.wall_y(wx, cy0, cy1, z0, z1, tex=T_CONC, gaps=[paso])
                 w.wall_x(cy0, cx0, cx1, z0, z1, tex=T_CONC)
                 w.wall_x(cy1, cx0, cx1, z0, z1, tex=T_CONC)
                 # rejas de la celda (barrotes finos, pocos brushes)
@@ -248,7 +319,9 @@ def build_prison_world() -> World:
     # COMEDOR  X[-1100..0] Y[200..900]
     # ------------------------------------------------------------------
     w.shell(X0, 200.0, 0.0, 900.0, Z0, Z1, tex=T_WALL, floor_t=T_FLOOR,
-            doors=[("S", -120, 120)])
+            doors=[("S", -120, 120)],
+            windows=[("W", 400, 460), ("W", 700, 760),
+                     ("N", -820, -740), ("N", -420, -340)])
     for i in range(4):
         mx = -950.0 + i * 260.0
         w.brush(mx, 350, Z0, mx + 200, 420, 34, tex=T_WOOD, top=T_WOODTOP)
@@ -269,7 +342,9 @@ def build_prison_world() -> World:
     # ENFERMERIA  X[0..1100] Y[200..900]
     # ------------------------------------------------------------------
     w.shell(0.0, 200.0, X1, 900.0, Z0, Z1, tex=T_WALL2, floor_t=T_FLOOR,
-            doors=[("S", 60, 180), ("W", 400, 520)])
+            doors=[("S", 60, 180), ("W", 400, 520)],
+            windows=[("E", 400, 460), ("E", 700, 760),
+                     ("N", 400, 480), ("N", 800, 880)])
     for i in range(3):
         w.brush(120 + i * 300, 320, Z0, 260 + i * 300, 480, 36,
                 tex=T_METAL, top=T_FLOOR)
@@ -307,6 +382,79 @@ def build_prison_world() -> World:
     w.prop("models/props/Kino_table.mdl", -980, -560, 16)
     w.prop("models/props/bath.mdl", 980, -560, 16)
     w.prop("models/props/bodybag_head.mdl", -980, -300, 16)
+
+    # ------------------------------------------------------------------
+    # VENTANAS CON TABLAS: 4 por sala (16 en total)
+    # ------------------------------------------------------------------
+    for i, wy in enumerate((-1200, -1000)):                     # recepcion
+        window("bar_r%d_w" % i, -1100, wy, "z_cells", -1250, wy, "0 90 0")
+        window("bar_r%d_e" % i, 1100, wy, "z_cells", 1250, wy, "0 270 0")
+    for i, cy in enumerate((-770, -250)):                       # celdas
+        window("bar_c%d_w" % i, -1100, cy, "z_cells", -1250, cy, "0 90 0")
+        window("bar_c%d_e" % i, 1100, cy, "z_cells", 1250, cy, "0 270 0")
+    for i, my in enumerate((430, 730)):                         # comedor
+        window("bar_m%d_w" % i, -1100, my, "z_mess", -1250, my, "0 90 0")
+    for i, mx in enumerate((-780, -380)):                       # comedor->patio
+        window("bar_m%d_n" % i, mx, 900, "z_yard", mx, 1060, "0 180 0")
+    for i, ny in enumerate((430, 730)):                         # enfermeria
+        window("bar_i%d_e" % i, 1100, ny, "z_infirm", 1250, ny, "0 270 0")
+    for i, nx in enumerate((430, 830)):                         # enf->patio
+        window("bar_i%d_n" % i, nx, 900, "z_yard", nx, 1060, "0 180 0")
+
+    # ------------------------------------------------------------------
+    # ARMA DE PARED EN CADA SALA (IDs numericos, como los mapas del juego)
+    # ------------------------------------------------------------------
+    def wallgun(name, wid, cost, x, y, ang):
+        w.ent("weapon_wall", (x, y, 40), targetname=name, angle=ang,
+              sequence=str(wid))
+        w.ent("buy_weapon", (x, y, 40), target=name, weapon=str(wid),
+              cost=str(cost), cost2=str(cost // 2))
+
+    wallgun("wg_cells_a", 5, 600, -1080, -500, "90")     # bloque de celdas
+    wallgun("wg_cells_b", 21, 1200, 1080, -500, "270")
+    wallgun("wg_mess_a", 7, 2000, -1080, 460, "90")      # comedor
+    wallgun("wg_infirm_a", 23, 1500, 1080, 460, "270")   # enfermeria
+    wallgun("wg_infirm_b", 3, 1000, 1080, 760, "270")
+    wallgun("wg_yard_a", 11, 2000, -1080, 1500, "90")    # patio
+
+    # ------------------------------------------------------------------
+    # MOBILIARIO (todos los .mdl existen en models/props)
+    # ------------------------------------------------------------------
+    # recepcion
+    w.prop("models/props/shelf.mdl", 1000, -1240, 16, "0 270 0")
+    w.prop("models/props/trash_con.mdl", -1000, -1240, 16)
+    w.prop("models/props/radio.mdl", -240, -1100, 44, "0 90 0")
+    # celdas: literas y enseres
+    for i, py in enumerate((-800, -540, -280, -20)):
+        w.prop("models/props/bed.mdl", -1000, py, 16, "0 90 0")
+        w.prop("models/props/bed.mdl", 1000, py, 16, "0 270 0")
+        w.prop("models/props/toilet.mdl", -1020, py + 90, 16, "0 90 0")
+        w.prop("models/props/metal_chair.mdl", 1020, py + 60, 16, "0 270 0")
+    # pasillo
+    w.prop("models/props/sandbags.mdl", -60, -700, 16, "0 90 0")
+    w.prop("models/props/sandbags.mdl", -60, 60, 16, "0 90 0")
+    w.prop("models/props/container.mdl", 60, -820, 16)
+    # comedor
+    for i in range(4):
+        mx = -950.0 + i * 260.0
+        w.prop("models/props/metal_chair.mdl", mx + 40, 300, 16, "0 180 0")
+        w.prop("models/props/metal_chair.mdl", mx + 40, 740, 16, "0 0 0")
+    w.prop("models/props/fridge.mdl", -60, 820, 16, "0 270 0")
+    w.prop("models/props/oven.mdl", -60, 700, 16, "0 270 0")
+    w.prop("models/props/trash_con.mdl", -1020, 820, 16)
+    # enfermeria
+    w.prop("models/props/dentist_chair.mdl", 300, 700, 16, "0 0 0")
+    w.prop("models/props/dentist_chair.mdl", 700, 700, 16, "0 0 0")
+    w.prop("models/props/dentist_chair.mdl", 300, 400, 16, "0 180 0")
+    w.prop("models/props/table_sq.mdl", 500, 550, 16)
+    w.prop("models/props/MopBucket.mdl", 1040, 820, 16)
+    w.prop("models/props/bodybag_flat.mdl", 200, 240, 16, "0 90 0")
+    # patio
+    w.prop("models/props/sandbags.mdl", -900, 1200, 16, "0 0 0")
+    w.prop("models/props/sandbags.mdl", -780, 1200, 16, "0 0 0")
+    w.prop("models/props/Kino_boxes4.mdl", 900, 1300, 16)
+    w.prop("models/props/Kino_boxes2.mdl", 840, 1420, 16)
+    w.prop("models/props/teddy.mdl", 950, 1600, 16)
 
     # ------------------------------------------------------------------
     # PUERTAS COMPRABLES (abren zonas de zombies)
