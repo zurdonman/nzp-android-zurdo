@@ -102,8 +102,21 @@ class BSPScene:
             m0, m1, m2, m3 = struct.unpack_from("<IIII", self.data, abs_p + 24)
             pix0 = self.data[abs_p + m0 : abs_p + m0 + tw * th]
             pal_pos = abs_p + m3 + (tw // 8) * (th // 8)
-            c_used = struct.unpack_from("<H", self.data, pal_pos)[0]
-            pal = self.data[pal_pos + 2 : pal_pos + 2 + c_used * 3]
+            # Defensivo: algunos BSP (p.ej. fy_garden desde CS 1.6) traen paletas
+            # fuera de layout o truncadas. Si el offset cae fuera, usar paleta por defecto.
+            if pal_pos + 2 <= len(self.data):
+                c_used = struct.unpack_from("<H", self.data, pal_pos)[0]
+                c_used = max(0, min(c_used, (len(self.data) - pal_pos - 2) // 3))
+                pal = self.data[pal_pos + 2 : pal_pos + 2 + c_used * 3]
+            else:
+                c_used = 0
+                pal = b""
+            # Rellenar pix0 y pal a tamano completo para que el rasterizador nunca
+            # se salga del buffer en BSP con mipmaps/paleta truncados.
+            if len(pix0) < tw * th:
+                pix0 = pix0 + b"\x00" * (tw * th - len(pix0))
+            if len(pal) < 768:
+                pal = pal + b"\x80" * (768 - len(pal))
             self.textures.append((name, tw, th, pix0, pal))
 
         # Parse entities
