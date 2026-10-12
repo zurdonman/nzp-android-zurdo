@@ -1,0 +1,20 @@
+### spawn_00  cam=(-4582,-4418,96) yaw=0.0
+    cobertura=100.0%  cielo=0.0%  mdl3D=0.00%
+    texturas_visibles=8  profundidad p50=421 p95=869
+    luminancia media=98.6 (min=14 max=242 std=54.3)  oscuro=0.4%  quemado=1.4%
+    top: 3tiles_grey1=45.6%, ceilings_te1=24.8%, wall_br_red=17.6%, br_lightGL=4.6%, doors=4.5%, bricks_ak_white=2.1%, sidewalk=0.5%, conS6C=0.3%
+### spawn_90  cam=(-4582,-4418,96) yaw=90.0
+    cobertura=100.0%  cielo=0.0%  mdl3D=0.03%
+    texturas_visibles=9  profundidad p50=381 p95=700
+    luminancia media=102.4 (min=12 max=254 std=52.1)  oscuro=0.5%  quemado=1.2%
+    top: 3tiles_grey1=36.5%, ceilings_te1=23.1%, bricks_ak_white=16.0%, g_glass_=11.3%, w_wood_dark_64=8.0%, br_lightGL=3.4%, wood_t1=1.3%, sign_depot=0.4%
+### spawn_180  cam=(-4582,-4418,96) yaw=180.0
+    cobertura=100.0%  cielo=0.0%  mdl3D=1.13%
+    texturas_visibles=8  profundidad p50=401 p95=634
+    luminancia media=105.8 (min=12 max=242 std=51.1)  oscuro=0.5%  quemado=0.7%
+    top: 3tiles_grey1=31.0%, bricks_ak_white=26.1%, ceilings_te1=22.8%, w_wood_dark_64=12.2%, window_lit=2.7%, con_rN=2.1%, br_lightGL=1.9%, <mdl 3D>=1.1%
+### spawn_270  cam=(-4582,-4418,96) yaw=270.0
+    cobertura=100.0%  cielo=0.0%  mdl3D=0.58%
+    texturas_visibles=8  profundidad p50=368 p95=680
+    luminancia media=105.9 (min=12 max=242 std=53.0)  oscuro=0.5%  quemado=0.7%
+    top: bricks_ak_white=25.5%, 3tiles_grey1=24.0%, ceilings_te1=23.1%, w_wood_dark_64=19.6%, window_lit=2.7%, br_lightGL=2.6%, con_rN=1.8%, <mdl 3D>=0.6%

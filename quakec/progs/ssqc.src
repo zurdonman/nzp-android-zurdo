@@ -132,6 +132,7 @@ ai/standard/waypoints_core.qc
 ai/zombie_core.qc
 ai/crawler_core.qc
 ai/dog_core.qc
+entities/tranzit.qc
 utilities/map_compatibility.qc
 gamemodes/gun_game.qc
 gamemodes/hardcore.qc

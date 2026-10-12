@@ -34,7 +34,8 @@ Write-Host "=== Dispositivos ===" -ForegroundColor Cyan
 
 if (-not $SkipInstall) {
   if (-not (Test-Path $APK)) { Write-Host "No encuentro la APK: $APK (lanza antes build_apk.ps1)" -ForegroundColor Red; exit 1 }
-  Write-Host "`n=== Instalando APK ({0:N1} MB, {1}) ===" -f ((Get-Item $APK).Length/1MB), (Get-Item $APK).LastWriteTime.ToString('MM-dd HH:mm:ss') -ForegroundColor Cyan
+  Write-Host "`n=== Instalando APK ===" -ForegroundColor Cyan
+  ("   APK: {0:N1} MB  {1}" -f ((Get-Item $APK).Length/1MB), (Get-Item $APK).LastWriteTime.ToString('MM-dd HH:mm:ss')) | Write-Host -ForegroundColor DarkGray
   & $ADB install -r $APK
   if ($LASTEXITCODE -ne 0) { Write-Host "Instalacion fallida" -ForegroundColor Red; exit 1 }
 }
@@ -56,8 +57,8 @@ Start-Sleep -Seconds $WaitSeconds
 
 # --- 1) proceso vivo? ---
 Write-Host "`n=== 1) Proceso ===" -ForegroundColor Cyan
-$pid = (& $ADB shell pidof $PKG) -join ''
-if ($pid) { Write-Host "   VIVO pid=$pid  <-- si no hay crash debajo, el fix aguanta" -ForegroundColor Green }
+$appPid = (& $ADB shell pidof $PKG) -join ''
+if ($appPid) { Write-Host "   VIVO pid=$appPid  <-- si no hay crash debajo, el fix aguanta" -ForegroundColor Green }
 else      { Write-Host "   MUERTO (se ha cerrado)" -ForegroundColor Red }
 
 # --- 2) crash buffer ---
@@ -68,7 +69,7 @@ else        { Write-Host "   (vacio: sin SIGSEGV) <-- BUENA SENAL" -ForegroundCo
 
 # --- 3) vr_log.txt en el sandbox de la app ---
 Write-Host "`n=== 3) files/vr_log.txt (marcadores clave) ===" -ForegroundColor Cyan
-$log = & $ADB shell "run-as $PKG grep -e 'post-begin' -e 'Swapchain ojo' -e 'FBOs ojo' -e 'LAYERDUMP' -e 'Acciones' -e 'HB frames' -e 'estado=' -e fallo -e 'xrBeginSession' -e 'xrEndFrame' files/vr_log.txt" 2>$null
+$log = & $ADB shell "run-as $PKG grep -e 'swapchains AHORA' -e 'Reintento swapchains' -e 'Swapchain ojo' -e 'FBOs ojo' -e 'LAYERDUMP' -e 'Acciones' -e 'HB frames' -e 'estado=' -e fallo -e 'xrBeginSession' -e 'xrEndFrame' files/vr_log.txt" 2>$null
 if ($log) { $log | Select-Object -Last 30 | ForEach-Object { "   $_" } }
 else { Write-Host "   (sin lineas clave; volcando tail crudo)" -ForegroundColor Yellow
      & $ADB shell "run-as $PKG tail -n 30 files/vr_log.txt" 2>$null | ForEach-Object { "   $_" } }
