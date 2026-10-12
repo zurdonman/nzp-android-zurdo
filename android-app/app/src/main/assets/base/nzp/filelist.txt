@@ -266,6 +266,9 @@ maps/fegefeuer.mbox
 maps/fegefeuer.nsz
 maps/fegefeuer.txt
 maps/fegefeuer.way
+maps/fy_garden.bsp
+maps/fy_garden.txt
+maps/fy_garden.way
 maps/hangar.bsp
 maps/hangar.nsz
 maps/hangar.txt
