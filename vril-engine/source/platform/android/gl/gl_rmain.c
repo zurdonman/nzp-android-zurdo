@@ -144,6 +144,17 @@ qboolean R_CullBox (vec3_t mins, vec3_t maxs)
 {
 	int		i;
 
+#ifdef NZP_VR_OPENXR
+	/* VR: el recorte por frustum usa la direccion del CUERPO (vpn de
+	 * r_refdef.viewangles), pero la camara real es la CABEZA (pose del ojo),
+	 * que gira libre. Al girar la cabeza, el frustum del cuerpo no cubre lo
+	 * que miras -> partes del mapa sin renderizar (negro). El visor tiene
+	 * margen de sobra: en VR dibujamos todo el mapa (sin cull por frustum).
+	 * El pVS del BSP sigue recortando por hojas visibles, que es barato. */
+	if (VR_IsRendering ())
+		return false;
+#endif
+
 	for (i=0 ; i<4 ; i++)
 		if (BoxOnPlaneSide (mins, maxs, &frustum[i]) == 2)
 			return true;
@@ -1037,11 +1048,21 @@ void R_DrawAliasModel (entity_t *e)
 		if ((e == &cl.viewent || e == &cl.viewent2) && scr_fov_viewmodel.value) {
 			float scale = 1.0f / tanf (DEG2RAD (scr_fov.value / 2.0f)) * scr_fov_viewmodel.value / 90.0f;
 			if (e->scale != ENTSCALE_DEFAULT && e->scale != 0) scale *= ENTSCALE_DECODE(e->scale);
+#ifdef NZP_VR_OPENXR
+			/* VR: las manos/arma del modelo se ven enormes a escala 1:1 en la
+			 * cara. vr_vm_scale las encoje alrededor del origen del modelo. */
+			if (VR_IsRendering () && vr_vm_scale.value > 0.05f && vr_vm_scale.value < 2.0f)
+				scale *= vr_vm_scale.value;
+#endif
 			glTranslatef (paliashdr->scale_origin[0] * scale, paliashdr->scale_origin[1], paliashdr->scale_origin[2]);
 			glScalef (paliashdr->scale[0] * scale, paliashdr->scale[1], paliashdr->scale[2]);
 		} else {
 			float scale = 1.0f;
 			if (e->scale != ENTSCALE_DEFAULT && e->scale != 0) scale *= ENTSCALE_DECODE(e->scale);
+#ifdef NZP_VR_OPENXR
+			if (VR_IsRendering () && (e == &cl.viewent || e == &cl.viewent2) && vr_vm_scale.value > 0.05f && vr_vm_scale.value < 2.0f)
+				scale *= vr_vm_scale.value;
+#endif
 			glTranslatef (paliashdr->scale_origin[0] * scale, paliashdr->scale_origin[1] * scale, paliashdr->scale_origin[2] * scale);
 			glScalef (paliashdr->scale[0] * scale, paliashdr->scale[1] * scale, paliashdr->scale[2] * scale);
 		}
@@ -1344,6 +1365,66 @@ void R_DrawViewModel (void)
 	glDepthRange (gldepthmin, gldepthmin + 0.3*(gldepthmax-gldepthmin));
 	R_DrawAliasModel (currententity);
 	glDepthRange (gldepthmin, gldepthmax);
+
+#ifdef NZP_VR_OPENXR
+	/* VR: laser de apuntado desde el arma (anclada al mando derecho). Sale de
+	 * la boca del canon hacia +X del arma y marca hacia donde apunta el mando.
+	 * Se dibuja en coords de mundo bajo la eyeView ya cargada. */
+	if (VR_IsRendering()) {
+		extern void TraceLine (vec3_t start, vec3_t end, vec3_t impact);
+		vec3_t la, lfwd, lright, lup, lstart, lend, hit;
+		// el modelo se dibuja con glRotatef(-angles[0]) (pitch negado); el
+		// laser debe usar el MISMO pitch que el modelo ve, si no va invertido.
+		VectorCopy (currententity->angles, la);
+		la[0] = -la[0];
+		AngleVectors (la, lfwd, lright, lup);
+		// salir desde la boca del canon (lejos del cuerpo: el origen del
+		// viewmodel queda atras, cerca del pecho)
+		{
+			float muzzle = vr_laser_muzzle.value;
+			if (muzzle < 0.0f) muzzle = 0.0f;
+			if (muzzle > 160.0f) muzzle = 160.0f;
+			VectorMA (currententity->origin, muzzle, lfwd, lstart);
+		}
+		// Raycast contra el mundo: el laser se corta donde toca una pared
+		VectorMA (lstart, 8192.0f, lfwd, lend);
+		VectorCopy (lend, hit);
+		TraceLine (lstart, lend, hit);
+		VectorMA (hit, -1.0f, lfwd, hit);
+		{
+			static int laser_dbg = 0;
+			if (!laser_dbg) {
+				vec3_t d;
+				laser_dbg = 1;
+				VectorSubtract (hit, lstart, d);
+				VR_DiagLog ("LASER start=(%.0f,%.0f,%.0f) hit=(%.0f,%.0f,%.0f) len=%.0f",
+					lstart[0], lstart[1], lstart[2], hit[0], hit[1], hit[2],
+					VectorLength (d));
+			}
+		}
+		glDisable (GL_TEXTURE_2D);
+		glDisable (GL_DEPTH_TEST);
+		glEnable (GL_BLEND);
+		glColor4f (1.0f, 0.15f, 0.15f, 0.9f);
+		{
+			// el laser se dibuja como quad (GL_LINES no esta soportado de
+			// forma fiable por el wrapper GL del movil)
+			vec3_t a0, a1, a2, a3;
+			VectorMA (lstart, 1.5f, lright, a0);
+			VectorMA (lstart, -1.5f, lright, a1);
+			VectorMA (hit, -1.5f, lright, a2);
+			VectorMA (hit, 1.5f, lright, a3);
+			glBegin (GL_QUADS);
+			glVertex3fv (a0); glVertex3fv (a1);
+			glVertex3fv (a2); glVertex3fv (a3);
+			glEnd ();
+		}
+		glColor4f (1, 1, 1, 1);
+		glDisable (GL_BLEND);
+		glEnable (GL_DEPTH_TEST);
+		glEnable (GL_TEXTURE_2D);
+	}
+#endif
 }
 
 
@@ -1509,12 +1590,30 @@ static void VR_SetupEyeProjection (void)
 	VR_GetEyeSize(&ew, &eh);
 	VR_GetEyeFov(&l, &r, &u, &d);
 
+	/* vr_fov_mult >1 ensancha el frustum SIN tocar la capa de composicion
+	 * (esa va con el fov nativo del HMD): el render cubre mas angulo del que
+	 * recorta el compositor => el mundo se percibe mas lejos/pequeno, menos
+	 * mareo por cercania. El centro de vision no cambia (los 4 angulos se
+	 * escalan igual). */
+	{
+		float m = vr_fov_mult.value;
+		if (m > 0.5f && m < 3.0f) {
+			l *= m; r *= m; u *= m; d *= m;
+		}
+	}
+
 	tan_l = tanf(l);	tan_r = tanf(r);
 	tan_d = tanf(d);	tan_u = tanf(u);
 
+	/* glFrustumf NO recibe tangentes: recibe las COORDENADAS del plano near
+	 * (arriba/abajo/izquierda/derecha). El motor clasico usa near=4 (ver
+	 * gluPerspective abajo). Sin multiplicar por 4, el frustum tiene un near
+	 * de tamano ~1: todo el mapa (poligono a 100..4000 unidades) cae fuera
+	 * del volumen de vision => el mundo NUNCA se dibuja = pantalla negra
+	 * dentro del mapa (reporte del usuario, apk22). */
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
-	glFrustumf(-tan_l, tan_r, -tan_d, tan_u, 4.0f, 4096.0f);
+	glFrustumf(-4.0f * tan_l, 4.0f * tan_r, -4.0f * tan_d, 4.0f * tan_u, 4.0f, 4096.0f);
 }
 #endif
 
@@ -1531,22 +1630,44 @@ void R_SetupGL (void)
 
 #ifdef NZP_VR_OPENXR
 	if (VR_IsRendering()) {
-		/* VR (paso 3): el destino ya es el FBO del ojo completo (VR_BeginEye
-		 * fijo viewport y proyeccion). Aqui solo reafirmamos el viewport del
-		 * ojo; la proyeccion la pone VR_SetupEyeProjection desde R_RenderView
-		 * (despues de R_Clear, antes de R_RenderScene). */
+		/* VR: el destino ya es el FBO del ojo (VR_BeginEye fijo viewport); la
+		 * proyeccion la pone VR_SetupEyeProjection desde R_RenderView. La
+		 * MODELVIEW es la matriz de vista POR OJO de OpenXR (VR_GetEyeViewMatrix):
+		 * incluye la pose de cabeza + IPD del ojo actual, compuesta con el
+		 * cuerpo del jugador. Esto ancla el mundo (no sigue a la cabeza) y da
+		 * relieve 3D real (cada ojo ve desde su posicion). Si no hay vistas
+		 * validas, cae a la ruta clasica (sin estereo). */
 		int ew, eh;
+		float mv16[16];
 		VR_GetEyeSize(&ew, &eh);
 		glViewport(0, 0, ew, eh);
 		glCullFace(GL_FRONT);
 		glMatrixMode(GL_MODELVIEW);
 		glLoadIdentity();
-		glRotatef (-90,  1, 0, 0);	// put Z going up
-		glRotatef (90,  0, 0, 1);	// put Z going up
-		glRotatef (-r_refdef.viewangles[2],  1, 0, 0);
-		glRotatef (-r_refdef.viewangles[0],  0, 1, 0);
-		glRotatef (-r_refdef.viewangles[1],  0, 0, 1);
-		glTranslatef (-r_refdef.vieworg[0],  -r_refdef.vieworg[1],  -r_refdef.vieworg[2]);
+		{
+			static int vr_mv_logged = 0;
+			qboolean ok = VR_GetEyeViewMatrix(r_refdef.vieworg, r_refdef.viewangles[YAW],
+					r_refdef.viewangles[PITCH], r_refdef.viewangles[ROLL], mv16);
+			if (!vr_mv_logged) {
+				float fl, fr, fu, fd;
+				VR_GetEyeFov(&fl, &fr, &fu, &fd);
+				vr_mv_logged = 1;
+				VR_DiagLog("R_SetupGL VR: eyeView=%d fov(L=%.2f R=%.2f U=%.2f D=%.2f) mv=[%.2f %.2f %.2f][%.2f %.2f %.2f] t=[%.1f %.1f %.1f]",
+					(int)ok, fl, fr, fu, fd,
+					mv16[0], mv16[4], mv16[8], mv16[1], mv16[5], mv16[9],
+					mv16[12], mv16[13], mv16[14]);
+			}
+			if (ok) {
+				glMultMatrixf(mv16);
+			} else {
+			glRotatef (-90,  1, 0, 0);
+			glRotatef (90,  0, 0, 1);
+			glRotatef (-r_refdef.viewangles[2],  1, 0, 0);
+			glRotatef (-r_refdef.viewangles[0],  0, 1, 0);
+			glRotatef (-r_refdef.viewangles[1],  0, 0, 1);
+			glTranslatef (-r_refdef.vieworg[0],  -r_refdef.vieworg[1],  -r_refdef.vieworg[2]);
+		}
+		}
 		glGetFloatv (GL_MODELVIEW_MATRIX, r_world_matrix);
 		if (gl_cull.value)
 			glEnable(GL_CULL_FACE);
