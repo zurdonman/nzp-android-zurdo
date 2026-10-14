@@ -11,11 +11,27 @@
       white-space:pre}
  #err{position:fixed;inset:0;display:none;place-items:center;text-align:center;
       padding:40px;font:14px monospace;color:#f88;background:#111}
+ #joy{position:fixed;left:18px;bottom:18px;width:130px;height:130px;
+      border-radius:50%;background:rgba(255,255,255,.08);
+      border:2px solid rgba(255,255,255,.25);display:none;touch-action:none;z-index:5}
+ #joy.on{display:block}
+ #knob{position:absolute;left:50%;top:50%;width:56px;height:56px;
+       margin:-28px 0 0 -28px;border-radius:50%;
+       background:rgba(255,255,255,.35);border:2px solid rgba(255,255,255,.55)}
+ #btns{position:fixed;right:18px;bottom:18px;display:none;z-index:5;touch-action:none}
+ #btns.on{display:block}
+ .bt{width:70px;height:70px;margin-top:14px;border-radius:50%;
+     background:rgba(255,255,255,.10);border:2px solid rgba(255,255,255,.3);
+     color:#eee;font:11px monospace;text-align:center;line-height:70px;
+     -webkit-user-select:none;user-select:none}
+ .bt:active{background:rgba(255,255,255,.3)}
  canvas{display:block;touch-action:none}
 </style></head><body>
 <div id="hud">cargando...</div>
 <div id="err">No se pudo cargar Three.js desde unpkg.com.<br>
 Este visor necesita internet la primera vez.</div>
+<div id="joy"><div id="knob"></div></div>
+<div id="btns"><div class="bt" id="bup">SUBIR</div><div class="bt" id="bdn">BAJAR</div></div>
 <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 <script>
 if (typeof THREE === 'undefined') { document.getElementById('err').style.display='grid'; }
@@ -105,33 +121,74 @@ cv.addEventListener('touchstart',tStart,{passive:false});
 cv.addEventListener('touchmove',tMove,{passive:false});
 cv.addEventListener('touchend',tEnd,{passive:false});
 cv.addEventListener('touchcancel',tEnd,{passive:false});
+
+// --- joystick (abajo izquierda) y botones de subir/bajar, solo con tactil ---
+const tactil=('ontouchstart' in window)||
+             ((window.navigator&&window.navigator.maxTouchPoints)>0);
+const joy=document.getElementById('joy'),knob=document.getElementById('knob');
+if(tactil){joy.className='on';document.getElementById('btns').className='on';}
+const JR=48;                                  // recorrido util del stick, px
+let jdx=0,jdy=0,btnUp=0,btnDn=0;
+function jCentro(){return [18+65,innerHeight-18-65];}
+function jMover(x,y){
+  const c=jCentro();let dx=x-c[0],dy=y-c[1];
+  const d=Math.sqrt(dx*dx+dy*dy);
+  if(d>JR){dx=dx*JR/d;dy=dy*JR/d;}
+  jdx=dx/JR;jdy=dy/JR;
+  knob.style.transform='translate('+dx.toFixed(1)+'px,'+dy.toFixed(1)+'px)';
+}
+function jSoltar(){jdx=0;jdy=0;knob.style.transform='translate(0px,0px)';}
+function joyEv(e){e.preventDefault();
+  if(e.touches&&e.touches.length){jMover(e.touches[0].clientX,e.touches[0].clientY);}
+  else{jSoltar();}}
+joy.addEventListener('touchstart',joyEv,{passive:false});
+joy.addEventListener('touchmove',joyEv,{passive:false});
+joy.addEventListener('touchend',joyEv,{passive:false});
+joy.addEventListener('touchcancel',joyEv,{passive:false});
+function boton(el,set){
+  el.addEventListener('touchstart',e=>{e.preventDefault();set(1);},{passive:false});
+  el.addEventListener('touchend',e=>{e.preventDefault();set(0);},{passive:false});
+  el.addEventListener('touchcancel',e=>{e.preventDefault();set(0);},{passive:false});
+  el.addEventListener('mousedown',e=>{e.preventDefault();set(1);});
+  el.addEventListener('mouseup',()=>set(0));
+  el.addEventListener('mouseleave',()=>set(0));
+}
+boton(document.getElementById('bup'),v=>btnUp=v);
+boton(document.getElementById('bdn'),v=>btnDn=v);
+
 addEventListener('resize',()=>{cam.aspect=innerWidth/innerHeight;
   cam.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
 
 const hud=document.getElementById('hud');
-function loop(){
+let tPrev=0;
+function loop(t){
   requestAnimationFrame(loop);
-  const sp=(keys['ShiftLeft']||keys['ShiftRight'])?80:22;
-  const f=new THREE.Vector3(Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),
-                            Math.cos(yaw)*Math.cos(pitch));
-  const r=new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0),f).normalize();
+  // velocidad por segundo, no por frame: si no, en una pantalla de 120 Hz
+  // se moveria al doble que en una de 60
+  const dt=Math.min(((t||0)-tPrev)/1000,0.05);
+  tPrev=(t||0);
+  const sp=((keys['ShiftLeft']||keys['ShiftRight'])?900:320)*dt;
+  // avance SIEMPRE horizontal: si se usa la inclinacion, mirar arriba
+  // hace que "avanzar" vuele, y el visor se vuelve incomodo de manejar
+  const f=new THREE.Vector3(Math.sin(yaw),0,Math.cos(yaw));
+  const r=new THREE.Vector3(Math.cos(yaw),0,-Math.sin(yaw));   // izquierda
   if(keys['KeyW'])cam.position.addScaledVector(f,sp);
   if(keys['KeyS'])cam.position.addScaledVector(f,-sp);
   if(keys['KeyA'])cam.position.addScaledVector(r,sp);
   if(keys['KeyD'])cam.position.addScaledVector(r,-sp);
-  if(keys['KeyR'])cam.position.y+=sp;
-  if(keys['KeyF'])cam.position.y-=sp;
-  if(keys['KeyQ'])cam.position.addScaledVector(new THREE.Vector3(0,-1,0),sp);
-  if(keys['KeyE'])cam.position.addScaledVector(new THREE.Vector3(0,1,0),sp);
+  if(jdx||jdy){cam.position.addScaledVector(f,-jdy*sp);
+               cam.position.addScaledVector(r,-jdx*sp);}
+  if(keys['KeyR']||keys['KeyE']||btnUp)cam.position.y+=sp;
+  if(keys['KeyF']||keys['KeyQ']||btnDn)cam.position.y-=sp;
   if(dolly!==0){cam.position.addScaledVector(f,dolly);dolly=0;}
   cam.rotation.set(pitch,yaw,0,'YXZ');
   const p=cam.position;
   const NL=String.fromCharCode(10);
   hud.textContent=[M.name+' - '+(M.pos.length/3|0)+' vert / '+(M.idx.length/3|0)+' tris / '+M.groups.length+' materiales',
     'pos '+p.x.toFixed(0)+', '+p.y.toFixed(0)+', '+p.z.toFixed(0),
-    'WASD mover | raton mirar | R/F subir/bajar | Q/E vertical',
-    'Shift rapido | G wireframe',
-    'Tactil: 1 dedo girar | separar avanzar | juntar retroceder'].join(NL);
+    'PC: WASD mover | raton mirar | R/F subir/bajar | Shift rapido | G rejilla',
+    'Movil: joystick mover | arrastrar girar | pinza avanzar/retroceder',
+    'Movil: SUBIR y BAJAR abajo a la derecha'].join(NL);
   renderer.render(scene,cam);
 }
 loop();

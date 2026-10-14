@@ -52,9 +52,16 @@ class Box3 {
 const NOOP = function () {};
 
 // registro de eventos: permite a la prueba disparar sinteticamente
-// touchstart/touchmove/touchend como si fueran dedos de verdad
+// touchstart/touchmove/touchend como si fueran dedos de verdad.
+// Cada elemento guarda los suyos: en un navegador de verdad tocar el
+// joystick NO dispara los eventos del canvas (son hermanos, no ancestros),
+// y la prueba debe poder comprobarlo.
 global.__L = {};
 function reg(t, fn) { (global.__L[t] = global.__L[t] || []).push(fn); }
+function regEl(t, fn) {
+  this._L = this._L || {};
+  (this._L[t] = this._L[t] || []).push(fn);
+}
 
 global.THREE = {
   Scene: class extends Obj {},
@@ -63,7 +70,7 @@ global.THREE = {
   DirectionalLight: class extends Obj {},
   PerspectiveCamera: class extends Obj { constructor() { super(); this.aspect = 1; } updateProjectionMatrix() {} },
   WebGLRenderer: class {
-    constructor() { global.__canvas = this.domElement = { style: {}, addEventListener: reg }; }
+    constructor() { global.__canvas = this.domElement = { style: {}, addEventListener: regEl, _L: {} }; }
     setPixelRatio() {}
     setSize() {}
     render() { global.__rendered = (global.__rendered || 0) + 1; }
@@ -95,11 +102,15 @@ global.THREE = {
 // los elementos se cachean por id: asi la prueba puede leer el texto del HUD
 const cacheEls = {};
 const el = (id) => (cacheEls[id] = cacheEls[id] ||
-  { style: {}, textContent: '', setAttribute: NOOP, appendChild: NOOP, addEventListener: reg });
+  {
+    style: {}, textContent: '', className: '', id,
+    setAttribute: NOOP, appendChild: NOOP,
+    addEventListener: regEl, _L: {},
+  });
 global.document = {
   getElementById: (id) => el(id),
   createElement: () => el('_tmp'),
-  body: { appendChild: NOOP, addEventListener: reg },
+  body: { appendChild: NOOP, addEventListener: reg, _L: {} },
   addEventListener: reg,
 };
 global.window = global;
@@ -113,6 +124,7 @@ global.Image = class { constructor() { this.src = ''; } };
 // bucle siga vivo entre gesto y gesto. Quien quiera limitarlos, baja esto.
 global.__maxFrames = 1e9;
 let frames = 0;
+// igual que el navegador: requestAnimationFrame pasa una marca de tiempo
 global.requestAnimationFrame = (fn) => {
-  if (frames++ < global.__maxFrames) setTimeout(fn, 4);
+  if (frames++ < global.__maxFrames) setTimeout(() => fn(Date.now()), 4);
 };
