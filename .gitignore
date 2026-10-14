@@ -42,3 +42,4 @@ __pycache__/
 *.pyc
 visor/*.html
 !visor/index.html
+!visor/prison.html

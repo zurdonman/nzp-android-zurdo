@@ -314,13 +314,13 @@ if(M.spawns&&M.spawns.length){
 
 const keys={};
 let wire=false;
-onkeydown=e=>{keys[e.code]=true;
-  if(e.code==='KeyG'){wire=!wire;mats.forEach(m=>m.wireframe=wire);}};
-onkeyup=e=>keys[e.code]=false;
-document.body.onclick=()=>document.body.requestPointerLock();
-document.onmousemove=e=>{if(document.pointerLockElement){
+addEventListener('keydown',e=>{keys[e.code]=true;
+  if(e.code==='KeyG'){wire=!wire;mats.forEach(m=>m.wireframe=wire);}});
+addEventListener('keyup',e=>keys[e.code]=false);
+addEventListener('click',()=>document.body.requestPointerLock());
+addEventListener('mousemove',e=>{if(document.pointerLockElement){
   yaw-=e.movementX*0.002;pitch-=e.movementY*0.002;
-  pitch=Math.max(-1.5,Math.min(1.5,pitch));}};
+  pitch=Math.max(-1.5,Math.min(1.5,pitch));}});
 addEventListener('resize',()=>{cam.aspect=innerWidth/innerHeight;
   cam.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
 
@@ -341,11 +341,11 @@ function loop(){
   if(keys['KeyE'])cam.position.addScaledVector(new THREE.Vector3(0,1,0),sp);
   cam.rotation.set(pitch,yaw,0,'YXZ');
   const p=cam.position;
-  hud.textContent=M.name+'\n'+(M.pos.length/3|0)+' vert / '+
-    (M.idx.length/3|0)+' tris / '+M.groups.length+' materiales\n'+
-    'pos '+p.x.toFixed(0)+', '+p.y.toFixed(0)+', '+p.z.toFixed(0)+'\n'+
-    'WASD mover | raton mirar | R/F subir/bajar | Q/E vertical\n'+
-    'Shift rapido | G wireframe';
+  const NL=String.fromCharCode(10);
+  hud.textContent=[M.name+' - '+(M.pos.length/3|0)+' vert / '+(M.idx.length/3|0)+' tris / '+M.groups.length+' materiales',
+    'pos '+p.x.toFixed(0)+', '+p.y.toFixed(0)+', '+p.z.toFixed(0),
+    'WASD mover | raton mirar | R/F subir/bajar | Q/E vertical',
+    'Shift rapido | G wireframe'].join(NL);
   renderer.render(scene,cam);
 }
 loop();
@@ -372,7 +372,7 @@ def main():
             print(f"  {n}: sin geometria, omitido")
             continue
         # un HTML por mapa: se abre con doble clic desde file://
-        html = (HTML.replace("__MAPS__", _js([d]))
+        html = (HTML.replace("__MAPS__", _js(d))
                       .replace("__NAME__", n))
         f = os.path.join(OUT, n + ".html")
         open(f, "w", encoding="utf-8").write(html)
