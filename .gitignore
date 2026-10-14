@@ -40,3 +40,5 @@ tasks.json
 # ==== Python ====
 __pycache__/
 *.pyc
+visor/*.html
+!visor/index.html
