@@ -474,11 +474,22 @@ def main():
         print(f"  {n}: {len(d['pos'])//3} vertices, "
               f"{len(d['groups'])} materiales, "
               f"{os.path.getsize(f)/1e6:.1f} MB")
-    # indice con enlaces
+    # indice con enlaces: lista TODO lo que hay en visor/, no solo lo
+    # generado en esta pasada (si no, generar un mapa borra los demas)
+    info = {n: (v, t, sz) for n, v, t, sz in ok}
+    fichs = []
+    for f in sorted(glob.glob(os.path.join(OUT, "*.html"))):
+        n = os.path.basename(f)[:-5]
+        if n == "index":
+            continue
+        if n in info:
+            v, t, sz = info[n]
+            fichs.append((n, f"{v} vert / {t} mat / {sz/1e6:.1f} MB"))
+        else:
+            fichs.append((n, f"{os.path.getsize(f)/1e6:.1f} MB"))
     items = "".join(
-        f'<li><a href="{n}.html">{n}</a> '
-        f'<span>{v} vert / {t} mat / {sz/1e6:.1f} MB</span></li>'
-        for n, v, t, sz in sorted(ok))
+        f'<li><a href="{n}.html">{n}</a> <span>{d}</span></li>'
+        for n, d in fichs)
     open(os.path.join(OUT, "index.html"), "w", encoding="utf-8").write(
         "<!DOCTYPE html><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
@@ -486,7 +497,7 @@ def main():
         "<style>body{background:#151518;color:#ddd;font:14px monospace;"
         "padding:30px}a{color:#7fd1ff;text-decoration:none}"
         "li{margin:4px 0}span{color:#777;margin-left:10px}</style>"
-        f"<h1>Visor de mapas NZ:P</h1><p>{len(ok)} mapas. "
+        f"<h1>Visor de mapas NZ:P</h1><p>{len(fichs)} mapas. "
         "Toca uno para abrirlo.</p>"
         "<p><b>Movil / tablet:</b> joystick abajo a la izquierda para moverte, "
         "arrastra un dedo por la pantalla para girar la camara, separa dos "
@@ -494,7 +505,8 @@ def main():
         "a la derecha.</p>"
         "<p><b>PC:</b> WASD moverse, raton mirar, R/F y Q/E subir/bajar, "
         "Shift correr, G wireframe.</p><ul>" + items + "</ul>")
-    print(f"\n{len(ok)} visores en visor/ (abre visor/index.html)")
+    print(f"\n{len(ok)} visores generados; visor/index.html lista "
+          f"{len(fichs)} (abre visor/index.html)")
 
 
 def _js(data):
