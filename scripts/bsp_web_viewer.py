@@ -249,15 +249,19 @@ def build(name):
 
 
 HTML = """<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Visor NZ:P - __NAME__</title>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Visor NZ:P - __NAME__</title>
 <style>
- body{margin:0;overflow:hidden;background:#111;font:12px monospace;color:#eee}
+ body{margin:0;overflow:hidden;background:#111;font:12px monospace;color:#eee;
+      touch-action:none;-webkit-user-select:none;user-select:none;
+      -webkit-tap-highlight-color:transparent}
  #hud{position:fixed;left:10px;top:10px;background:rgba(0,0,0,.7);
       padding:10px;border-radius:6px;line-height:1.6;pointer-events:none;
       white-space:pre}
  #err{position:fixed;inset:0;display:none;place-items:center;text-align:center;
       padding:40px;font:14px monospace;color:#f88;background:#111}
- canvas{display:block}
+ canvas{display:block;touch-action:none}
 </style></head><body>
 <div id="hud">cargando...</div>
 <div id="err">No se pudo cargar Three.js desde unpkg.com.<br>
@@ -277,6 +281,8 @@ dl.position.set(0.5,1,0.3); scene.add(dl);
 
 const cam=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,1,30000);
 const renderer=new THREE.WebGLRenderer({antialias:true});
+// en movil limitar el pixel ratio: un ratio 3 en pantalla grande ahoga la GPU
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
 renderer.setSize(innerWidth,innerHeight);document.body.appendChild(renderer.domElement);
 
 // un unico buffer; cada grupo de material reutiliza los mismos vertices
@@ -317,10 +323,38 @@ let wire=false;
 addEventListener('keydown',e=>{keys[e.code]=true;
   if(e.code==='KeyG'){wire=!wire;mats.forEach(m=>m.wireframe=wire);}});
 addEventListener('keyup',e=>keys[e.code]=false);
-addEventListener('click',()=>document.body.requestPointerLock());
+addEventListener('click',()=>{try{document.body.requestPointerLock();}catch(e){}});
 addEventListener('mousemove',e=>{if(document.pointerLockElement){
   yaw-=e.movementX*0.002;pitch-=e.movementY*0.002;
   pitch=Math.max(-1.5,Math.min(1.5,pitch));}});
+
+// --- tactil (movil/tablet): 1 dedo gira la camara, pinza avanza/aleja ---
+const cv=renderer.domElement;
+let tMode=0,tX=0,tY=0,tDist=0,dolly=0;
+function pinch(e){const a=e.touches[0],b=e.touches[1];
+  const dx=a.clientX-b.clientX,dy=a.clientY-b.clientY;
+  return Math.sqrt(dx*dx+dy*dy);}
+function tStart(e){e.preventDefault();
+  if(e.touches.length>=2){tMode=2;tDist=pinch(e);}
+  else if(e.touches.length===1){tMode=1;
+    tX=e.touches[0].clientX;tY=e.touches[0].clientY;}}
+function tMove(e){e.preventDefault();
+  if(tMode===2&&e.touches.length>=2){
+    const d=pinch(e);dolly+=(d-tDist)*2.5;tDist=d;
+  }else if(tMode===1&&e.touches.length===1){
+    const t=e.touches[0];
+    yaw-=(t.clientX-tX)*0.006;pitch-=(t.clientY-tY)*0.006;
+    pitch=Math.max(-1.5,Math.min(1.5,pitch));
+    tX=t.clientX;tY=t.clientY;}}
+function tEnd(e){e.preventDefault();
+  if(e.touches.length>=2){tMode=2;tDist=pinch(e);}
+  else if(e.touches.length===1){tMode=1;
+    tX=e.touches[0].clientX;tY=e.touches[0].clientY;}
+  else{tMode=0;}}   // ojo: NO resetear dolly aqui, lo consume el frame
+cv.addEventListener('touchstart',tStart,{passive:false});
+cv.addEventListener('touchmove',tMove,{passive:false});
+cv.addEventListener('touchend',tEnd,{passive:false});
+cv.addEventListener('touchcancel',tEnd,{passive:false});
 addEventListener('resize',()=>{cam.aspect=innerWidth/innerHeight;
   cam.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
 
@@ -339,13 +373,15 @@ function loop(){
   if(keys['KeyF'])cam.position.y-=sp;
   if(keys['KeyQ'])cam.position.addScaledVector(new THREE.Vector3(0,-1,0),sp);
   if(keys['KeyE'])cam.position.addScaledVector(new THREE.Vector3(0,1,0),sp);
+  if(dolly!==0){cam.position.addScaledVector(f,dolly);dolly=0;}
   cam.rotation.set(pitch,yaw,0,'YXZ');
   const p=cam.position;
   const NL=String.fromCharCode(10);
   hud.textContent=[M.name+' - '+(M.pos.length/3|0)+' vert / '+(M.idx.length/3|0)+' tris / '+M.groups.length+' materiales',
     'pos '+p.x.toFixed(0)+', '+p.y.toFixed(0)+', '+p.z.toFixed(0),
     'WASD mover | raton mirar | R/F subir/bajar | Q/E vertical',
-    'Shift rapido | G wireframe'].join(NL);
+    'Shift rapido | G wireframe',
+    'Tactil: 1 dedo girar | separar avanzar | juntar retroceder'].join(NL);
   renderer.render(scene,cam);
 }
 loop();
@@ -387,13 +423,18 @@ def main():
         f'<span>{v} vert / {t} mat / {sz/1e6:.1f} MB</span></li>'
         for n, v, t, sz in sorted(ok))
     open(os.path.join(OUT, "index.html"), "w", encoding="utf-8").write(
-        "<!DOCTYPE html><meta charset='utf-8'><title>Visor NZ:P</title>"
+        "<!DOCTYPE html><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<title>Visor NZ:P</title>"
         "<style>body{background:#151518;color:#ddd;font:14px monospace;"
         "padding:30px}a{color:#7fd1ff;text-decoration:none}"
         "li{margin:4px 0}span{color:#777;margin-left:10px}</style>"
         f"<h1>Visor de mapas NZ:P</h1><p>{len(ok)} mapas. "
-        "Clic para abrir: WASD moverse, raton mirar, R/F subir/bajar, "
-        "Shift correr.</p><ul>" + items + "</ul>")
+        "Toca uno para abrirlo.</p>"
+        "<p><b>Movil / tablet:</b> arrastra con un dedo para girar la camara, "
+        "separa dos dedos para avanzar y juntalos para retroceder.</p>"
+        "<p><b>PC:</b> WASD moverse, raton mirar, R/F y Q/E subir/bajar, "
+        "Shift correr, G wireframe.</p><ul>" + items + "</ul>")
     print(f"\n{len(ok)} visores en visor/ (abre visor/index.html)")
 
 

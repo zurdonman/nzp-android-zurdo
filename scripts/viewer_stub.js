@@ -51,6 +51,11 @@ class Box3 {
 }
 const NOOP = function () {};
 
+// registro de eventos: permite a la prueba disparar sinteticamente
+// touchstart/touchmove/touchend como si fueran dedos de verdad
+global.__L = {};
+function reg(t, fn) { (global.__L[t] = global.__L[t] || []).push(fn); }
+
 global.THREE = {
   Scene: class extends Obj {},
   Color: Col,
@@ -58,7 +63,8 @@ global.THREE = {
   DirectionalLight: class extends Obj {},
   PerspectiveCamera: class extends Obj { constructor() { super(); this.aspect = 1; } updateProjectionMatrix() {} },
   WebGLRenderer: class {
-    constructor() { this.domElement = { style: {}, addEventListener: NOOP }; }
+    constructor() { global.__canvas = this.domElement = { style: {}, addEventListener: reg }; }
+    setPixelRatio() {}
     setSize() {}
     render() { global.__rendered = (global.__rendered || 0) + 1; }
   },
@@ -86,14 +92,27 @@ global.THREE = {
   NearestFilter: 1, LinearMipmapLinearFilter: 2, RepeatWrapping: 3, DoubleSide: 2,
 };
 
-const el = () => ({ style: {}, textContent: '', setAttribute: NOOP, appendChild: NOOP, addEventListener: NOOP });
-global.document = { getElementById: () => el(), createElement: () => el(), body: { appendChild: NOOP }, addEventListener: NOOP };
+// los elementos se cachean por id: asi la prueba puede leer el texto del HUD
+const cacheEls = {};
+const el = (id) => (cacheEls[id] = cacheEls[id] ||
+  { style: {}, textContent: '', setAttribute: NOOP, appendChild: NOOP, addEventListener: reg });
+global.document = {
+  getElementById: (id) => el(id),
+  createElement: () => el('_tmp'),
+  body: { appendChild: NOOP, addEventListener: reg },
+  addEventListener: reg,
+};
 global.window = global;
 global.innerWidth = 1280; global.innerHeight = 720;
-global.addEventListener = NOOP;
+global.devicePixelRatio = 2;   // como un movil, que es donde mas se usa
+global.addEventListener = reg;
 global.keys = {};
 global.Image = class { constructor() { this.src = ''; } };
 
-// pocos frames bastan: si el bucle arranca una vez, arranca siempre
+// frames ilimitados por defecto: la prueba del tactil necesita que el
+// bucle siga vivo entre gesto y gesto. Quien quiera limitarlos, baja esto.
+global.__maxFrames = 1e9;
 let frames = 0;
-global.requestAnimationFrame = (fn) => { if (frames++ < 2) setImmediate(fn); };
+global.requestAnimationFrame = (fn) => {
+  if (frames++ < global.__maxFrames) setTimeout(fn, 4);
+};
