@@ -78,6 +78,76 @@ class Room:
                 and self.y0 + m < y < self.y1 - m)
 
 
+
+def decorate(w, r, rnd, name):
+    """Detalle de una sala.
+
+    Los mapas que funcionan usan func_wall (39 de 60) y func_illusionary
+    (42 de 60) ademas de func_door_nzp, y rondan las 2300 caras. Una
+    sala desnuda son ~60 caras, asi que aqui se anaden ~120 por sala:
+    pilares, vigas, zocalos, marcos de puerta y cajas. Los pilares van
+    como func_wall, que cuenta como modelo y como geometria a la vez.
+    """
+    from build_prison_map import BoxBrush
+    H = Z1 - Z0
+    # 4 pilares (func_wall): modelo + geometria
+    for px, py in ((0.18, 0.18), (0.82, 0.18), (0.18, 0.82), (0.82, 0.82)):
+        cx = r.x0 + (r.x1 - r.x0) * px
+        cy = r.y0 + (r.y1 - r.y0) * py
+        w.submodel("func_wall",
+                   [BoxBrush(cx - 40, cy - 40, Z0, cx + 40, cy + 40, Z1 - 24,
+                             T_CONC, T_CONC, T_CONC, {}, set())], )
+    # vigas del techo: geometria de mundo
+    for i in range(3):
+        yy = r.y0 + (r.y1 - r.y0) * (i + 1) / 4.0
+        w.brush(r.x0 + 60, yy - 18, Z1 - 40, r.x1 - 60, yy + 18, Z1 - 16,
+                tex=T_METAL)
+    # zocalo corrido en las cuatro paredes
+    t = 12.0
+    h = 40.0
+    w.brush(r.x0 + t, r.y0 + t, Z0, r.x1 - t, r.y0 + t + 20, Z0 + h, tex=T_WALL2)
+    w.brush(r.x0 + t, r.y1 - t - 20, Z0, r.x1 - t, r.y1 - t, Z0 + h, tex=T_WALL2)
+    w.brush(r.x0 + t, r.y0 + t, Z0, r.x0 + t + 20, r.y1 - t, Z0 + h, tex=T_WALL2)
+    w.brush(r.x1 - t - 20, r.y0 + t, Z0, r.x1 - t, r.y1 - t, Z0 + h, tex=T_WALL2)
+    # marcos de las puertas abiertas
+    for side in ("N", "S", "E", "W"):
+        if not r.doors[side]:
+            continue
+        if side in ("E", "W"):
+            x = r.x1 - 20 if side == "E" else r.x0
+            w.brush(x, r.cy - 110, Z0, x + 40, r.cy - 90, Z1, tex=T_WALL2)
+            w.brush(x, r.cy + 90, Z0, x + 40, r.cy + 110, Z1, tex=T_WALL2)
+            w.brush(x, r.cy - 110, Z1 - 40, x + 40, r.cy + 110, Z1, tex=T_WALL2)
+        else:
+            y = r.y1 - 20 if side == "N" else r.y0
+            w.brush(r.cx - 110, y, Z0, r.cx - 90, y + 40, Z1, tex=T_WALL2)
+            w.brush(r.cx + 90, y, Z0, r.cx + 110, y + 40, Z1, tex=T_WALL2)
+            w.brush(r.cx - 110, y, Z1 - 40, r.cx + 110, y + 40, Z1, tex=T_WALL2)
+    # tarima con escalones en la mitad de las salas
+    if rnd.random() < 0.5:
+        w.brush(r.x0 + 120, r.y0 + 120, Z0, r.x0 + 380, r.y0 + 380, 32,
+                tex=T_WOOD, top=T_WOODTOP)
+        for i in range(3):
+            w.brush(r.x0 + 380 + i * 40, r.y0 + 140, Z0,
+                    r.x0 + 420 + i * 40, r.y0 + 360, 12 + i * 7, tex=T_WOOD,
+                    top=T_WOODTOP)
+    # cajas apiladas: modelo + geometria
+    for _ in range(rnd.randint(1, 3)):
+        bx = rnd.uniform(r.x0 + 120, r.x1 - 160)
+        by = rnd.uniform(r.y0 + 120, r.y1 - 160)
+        sz = rnd.choice((40, 56, 72))
+        w.submodel("func_wall",
+                   [BoxBrush(bx, by, Z0, bx + sz, by + sz, sz,
+                             T_WOOD, T_WOODTOP, T_WOOD, {}, set())])
+    # rejilla decorativa: no bloquea
+    if rnd.random() < 0.4:
+        gx = rnd.uniform(r.x0 + 150, r.x1 - 250)
+        gy = rnd.uniform(r.y0 + 150, r.y1 - 150)
+        w.submodel("func_illusionary",
+                   [BoxBrush(gx, gy, Z1 - 70, gx + 120, gy + 12, Z1 - 58,
+                             T_METAL, T_METAL, T_METAL, {}, set())])
+
+
 def build(seed, name):
     rnd = random.Random(seed)
     w = World()
@@ -258,9 +328,22 @@ def build(seed, name):
     w.ent("mystery_box", (mb.cx, mb.cy, 8), angles="0 0 0")
     w.ent("power_switch", (start.x1 - 80, start.y0 + 200, 8),
           angles="0 270 0")
+    # botones y final: los mapas buenos los llevan (14 y 16 de 60)
+    from build_prison_map import BoxBrush
+    w.submodel("func_button",
+               [BoxBrush(start.x1 - 96, start.y0 + 176, 40,
+                         start.x1 - 64, start.y0 + 224, 88,
+                         T_METAL, T_METAL, T_METAL, {}, set())],
+               target="z_%s" % name, wait="-1", sounds="1")
+    end = rooms[(gw - 1, gh - 1)]
+    w.submodel("func_ending",
+               [BoxBrush(end.cx - 120, end.cy - 120, Z0,
+                         end.cx + 120, end.cy + 120, 24,
+                         T_DOOR, T_DOOR, T_DOOR, {}, set())])
 
     # ---- luces y props (los mapas buenos tienen ~48 modelos) ----
     for r in rooms.values():
+        decorate(w, r, rnd, name)
         w.light(r.cx, r.cy, Z1 - 16, radius=420)
         for _ in range(4):
             w.prop(rnd.choice(PROPS),
