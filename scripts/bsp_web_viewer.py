@@ -232,100 +232,126 @@ def build(name):
         data = tex_png(tx[1], tx[2], tx[3], tx[4])
         tex_b64.append(base64.b64encode(data).decode())
 
+    # punto de aparicion del jugador, para arrancar la camara DENTRO
+    import re as _re
+    ent = b.entities()
+    spawns = []
+    for blk in _re.findall(r"\{([^{}]*)\}", ent):
+        kv = dict(_re.findall(r'"([^"]+)"\s+"([^"]*)"', blk))
+        if kv.get("classname") in ("info_player_start",
+                                   "info_player_1_spawn",
+                                   "info_player_2_spawn"):
+            o = kv.get("origin", "").split()
+            if len(o) == 3:
+                spawns.append([float(o[0]), float(o[2]), -float(o[1])])
     return dict(name=name, pos=pos, uv=uv, idx=idxs, groups=groups,
-                tex=tex_b64)
+                tex=tex_b64, spawns=spawns)
 
 
 HTML = """<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Visor NZ:P</title>
+<html><head><meta charset="utf-8"><title>Visor NZ:P - __NAME__</title>
 <style>
- body{margin:0;overflow:hidden;background:#111;font-family:monospace;color:#eee}
- #hud{position:fixed;left:10px;top:10px;background:rgba(0,0,0,.65);padding:10px;
-      border-radius:6px;font-size:12px;line-height:1.5;pointer-events:none}
- #sel{position:fixed;right:10px;top:10px;font-size:13px}
+ body{margin:0;overflow:hidden;background:#111;font:12px monospace;color:#eee}
+ #hud{position:fixed;left:10px;top:10px;background:rgba(0,0,0,.7);
+      padding:10px;border-radius:6px;line-height:1.6;pointer-events:none;
+      white-space:pre}
+ #err{position:fixed;inset:0;display:none;place-items:center;text-align:center;
+      padding:40px;font:14px monospace;color:#f88;background:#111}
  canvas{display:block}
 </style></head><body>
-<select id="sel"></select>
-<div id="hud"></div>
+<div id="hud">cargando...</div>
+<div id="err">No se pudo cargar Three.js desde unpkg.com.<br>
+Este visor necesita internet la primera vez.</div>
 <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 <script>
-const MAPS = __MAPS__;
-let scene,cam,renderer,mesh,keys={};
-const sel=document.getElementById('sel');
-MAPS.forEach((m,i)=>{const o=document.createElement('option');
-  o.value=i;o.textContent=m.name;sel.appendChild(o);});
-sel.onchange=()=>load(+sel.value);
+if (typeof THREE === 'undefined') { document.getElementById('err').style.display='grid'; }
+else { main(); }
 
-function load(i){
-  const m=MAPS[i];
-  if(mesh){scene.remove(mesh);mesh.geometry.dispose();}
-  const g=new THREE.BufferGeometry();
-  g.setAttribute('position',new THREE.Float32BufferAttribute(m.pos,3));
-  g.setAttribute('uv',new THREE.Float32BufferAttribute(m.uv,2));
-  g.setIndex(m.idx);
-  g.computeVertexNormals();
-  const root=new THREE.Group();
-  m.groups.forEach(gr=>{
-    const tg=g.clone();
-    const geo=new THREE.BufferGeometry();
-    geo.setAttribute('position',new THREE.Float32BufferAttribute(m.pos,3));
-    geo.setAttribute('uv',new THREE.Float32BufferAttribute(m.uv,2));
-    geo.setIndex(m.idx.slice(gr.start,gr.start+gr.count));
-    geo.computeVertexNormals();
-    const img=new Image();
-    img.src='data:image/png;base64,'+m.tex[gr.tex];
-    const t=new THREE.Texture(img);t.needsUpdate=true;
-    t.magFilter=THREE.NearestFilter;t.minFilter=THREE.LinearMipmapLinearFilter;
-    t.wrapS=t.wrapT=THREE.RepeatWrapping;
-    const mat=new THREE.MeshLambertMaterial({map:t});
-    root.add(new THREE.Mesh(geo,mat));
-  });
-  mesh=root;scene.add(root);
-  const box=new THREE.Box3().setFromObject(root);
-  const c=box.getCenter(new THREE.Vector3());
-  cam.position.set(c.x,c.y+80,c.z+300);
-  document.getElementById('hud').textContent=m.name+' - '+m.groups.length+
-    ' materiales, '+(m.pos.length/3|0)+' vertices';
-}
+function main(){
+const M = __MAPS__;
+const scene=new THREE.Scene();
+scene.background=new THREE.Color(0x15151a);
+scene.add(new THREE.AmbientLight(0xffffff,0.85));
+const dl=new THREE.DirectionalLight(0xffffff,0.45);
+dl.position.set(0.5,1,0.3); scene.add(dl);
 
-scene=new THREE.Scene();
-scene.background=new THREE.Color(0x151515);
-scene.add(new THREE.AmbientLight(0xffffff,0.75));
-const dl=new THREE.DirectionalLight(0xffffff,0.5);dl.position.set(1,2,1);
-scene.add(dl);
-cam=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,1,20000);
-renderer=new THREE.WebGLRenderer({antialias:true});
+const cam=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,1,30000);
+const renderer=new THREE.WebGLRenderer({antialias:true});
 renderer.setSize(innerWidth,innerHeight);document.body.appendChild(renderer.domElement);
 
+// un unico buffer; cada grupo de material reutiliza los mismos vertices
+const geo=new THREE.BufferGeometry();
+geo.setAttribute('position',new THREE.Float32BufferAttribute(M.pos,3));
+geo.setAttribute('uv',new THREE.Float32BufferAttribute(M.uv,2));
+geo.setIndex(M.idx);
+geo.computeVertexNormals();
+const mats=[];
+let base=0;
+M.groups.forEach((gr,k)=>{
+  geo.addGroup(base,gr.count,k); base+=gr.count;
+  const img=new Image(); img.src='data:image/png;base64,'+M.tex[gr.tex];
+  const t=new THREE.Texture(img); t.needsUpdate=true;
+  t.magFilter=THREE.NearestFilter;
+  t.minFilter=THREE.LinearMipmapLinearFilter;
+  t.wrapS=t.wrapT=THREE.RepeatWrapping;
+  mats.push(new THREE.MeshLambertMaterial({map:t,side:THREE.DoubleSide}));
+});
+const mesh=new THREE.Mesh(geo,mats);
+scene.add(mesh);
+
+// arrancar donde nace el jugador, mirando al centro del mapa
+const box=new THREE.Box3().setFromObject(mesh);
+const ctr=box.getCenter(new THREE.Vector3());
 let yaw=0,pitch=0;
+if(M.spawns&&M.spawns.length){
+  const p=M.spawns[0];
+  cam.position.set(p[0],p[1]+40,p[2]);
+  const d=new THREE.Vector3(ctr.x-cam.position.x,0,ctr.z-cam.position.z).normalize();
+  yaw=Math.atan2(-d.x,-d.z);
+}else{
+  cam.position.set(ctr.x,box.max.y+200,ctr.z+400);
+}
+
+const keys={};
+let wire=false;
+onkeydown=e=>{keys[e.code]=true;
+  if(e.code==='KeyG'){wire=!wire;mats.forEach(m=>m.wireframe=wire);}};
+onkeyup=e=>keys[e.code]=false;
 document.body.onclick=()=>document.body.requestPointerLock();
 document.onmousemove=e=>{if(document.pointerLockElement){
   yaw-=e.movementX*0.002;pitch-=e.movementY*0.002;
   pitch=Math.max(-1.5,Math.min(1.5,pitch));}};
-onkeydown=e=>keys[e.code]=true;
-onkeyup=e=>keys[e.code]=false;
 addEventListener('resize',()=>{cam.aspect=innerWidth/innerHeight;
   cam.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
 
+const hud=document.getElementById('hud');
 function loop(){
   requestAnimationFrame(loop);
-  const sp=(keys['ShiftLeft']||keys['ShiftRight'])?900:300;
-  const f=new THREE.Vector3();
-  cam.getWorldDirection(f);f.y=0;f.normalize();
-  const r=new THREE.Vector3().crossVectors(f,new THREE.Vector3(0,1,0));
-  if(keys['KeyW'])cam.position.addScaledVector(f,sp*0.016);
-  if(keys['KeyS'])cam.position.addScaledVector(f,-sp*0.016);
-  if(keys['KeyD'])cam.position.addScaledVector(r,-sp*0.016);
-  if(keys['KeyA'])cam.position.addScaledVector(r,sp*0.016);
-  if(keys['KeyR'])cam.position.y+=sp*0.016;
-  if(keys['KeyF'])cam.position.y-=sp*0.016;
+  const sp=(keys['ShiftLeft']||keys['ShiftRight'])?80:22;
+  const f=new THREE.Vector3(Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),
+                            Math.cos(yaw)*Math.cos(pitch));
+  const r=new THREE.Vector3().crossVectors(new THREE.Vector3(0,1,0),f).normalize();
+  if(keys['KeyW'])cam.position.addScaledVector(f,sp);
+  if(keys['KeyS'])cam.position.addScaledVector(f,-sp);
+  if(keys['KeyA'])cam.position.addScaledVector(r,sp);
+  if(keys['KeyD'])cam.position.addScaledVector(r,-sp);
+  if(keys['KeyR'])cam.position.y+=sp;
+  if(keys['KeyF'])cam.position.y-=sp;
+  if(keys['KeyQ'])cam.position.addScaledVector(new THREE.Vector3(0,-1,0),sp);
+  if(keys['KeyE'])cam.position.addScaledVector(new THREE.Vector3(0,1,0),sp);
   cam.rotation.set(pitch,yaw,0,'YXZ');
+  const p=cam.position;
+  hud.textContent=M.name+'\n'+(M.pos.length/3|0)+' vert / '+
+    (M.idx.length/3|0)+' tris / '+M.groups.length+' materiales\n'+
+    'pos '+p.x.toFixed(0)+', '+p.y.toFixed(0)+', '+p.z.toFixed(0)+'\n'+
+    'WASD mover | raton mirar | R/F subir/bajar | Q/E vertical\n'+
+    'Shift rapido | G wireframe';
   renderer.render(scene,cam);
 }
-load(0);loop();
+loop();
+}
 </script></body></html>
 """
-
 
 def main():
     args = sys.argv[1:]
@@ -346,7 +372,8 @@ def main():
             print(f"  {n}: sin geometria, omitido")
             continue
         # un HTML por mapa: se abre con doble clic desde file://
-        html = HTML.replace("__MAPS__", _js([d]))
+        html = (HTML.replace("__MAPS__", _js([d]))
+                      .replace("__NAME__", n))
         f = os.path.join(OUT, n + ".html")
         open(f, "w", encoding="utf-8").write(html)
         ok.append((n, len(d["pos"]) // 3, len(d["groups"]),
