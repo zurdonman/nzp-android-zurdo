@@ -66,6 +66,8 @@ CELL_W = 160          # ancho de celda
 CORRIDOR = 200        # ancho del pasillo central
 WIN_Z0 = 40.0         # franja del muro que ocupa una ventana
 WIN_Z1 = 112.0
+DOOR_Z1 = 120.0       # alto del hueco de puerta (= el de los brush de
+                      # func_door_nzp). El muro se rellena por encima.
 
 
 class World:
@@ -137,12 +139,22 @@ class World:
 
         def band(mk, holes, wins):
             """Tres franjas si la pared tiene ventanas, una sola si no."""
-            if wins:
+            # Ojo con el hueco de una puerta: NO puede ir de suelo a techo.
+            # El bloque de celdas tiene el techo a 288 y la puerta solo
+            # mide 120, asi que quedo un hueco de 120 a 288 por el que se
+            # colaba el jugador sin pagar. El hueco llega hasta DOOR_Z1 y
+            # encima se pone dintel macizo.
+            if wins and not holes:
                 mk(z0, WIN_Z0, [])                 # antepecho
-                mk(WIN_Z0, WIN_Z1, holes + wins)   # la propia ventana
+                mk(WIN_Z0, WIN_Z1, wins)           # la propia ventana
                 mk(WIN_Z1, z1, [])                 # dintel
+            elif holes:
+                dz = min(z1, DOOR_Z1)
+                mk(z0, dz, holes)                  # hueco de la puerta
+                if dz < z1:
+                    mk(dz, z1, [])                 # dintel macizo
             else:
-                mk(z0, z1, holes)
+                mk(z0, z1, [])
 
         band(lambda a, b, g: self.wall_x(y1, x0, x1, a, b, tex=tex, gaps=g),
              dg["N"], vg["N"])

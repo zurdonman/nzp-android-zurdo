@@ -40,7 +40,6 @@ tasks.json
 # ==== Python ====
 __pycache__/
 *.pyc
-# Los visores html se generan con scripts/bsp_web_viewer.py, pero se
-# SUBEN a proposito: son el unico modo de descargarlos sueltos desde
-# GitHub y abrirlos con doble clic. Son ~113 MB en 71 ficheros.
-# Si se quiere dejar de versionarlos: git rm -r --cached visor/*.html
+visor/*.html
+!visor/index.html
+!visor/prison.html
